@@ -73,7 +73,11 @@ Replace the `SPD` array with a 16-turn profile. Corner positions are expressed a
 | Approach finish | 0.975 | 1.22 | |
 | Finish line | 1.000 | 1.20 | |
 
-`BASE_LAP_MS` remains `74203` (Leclerc's 2023 pole: 1:24.203). The existing `computeNorm()` function normalises the new profile so lap time stays accurate.
+**Timing calibration:**
+- `BASE_LAP_MS = 88000` (88s — mid-point of race pace target)
+- `lapJitter = 0.977 + Math.random() * 0.046` (range 0.977–1.023) → laps vary ~86–90s
+- Lap record reference: 82s (qualifying pace — the simulation does not reach this; it represents the floor)
+- The existing `computeNorm()` function normalises the speed profile so the total lap time hits `BASE_LAP_MS`.
 
 ---
 
