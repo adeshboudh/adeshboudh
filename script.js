@@ -31,8 +31,8 @@
   /* ── Yas Marina circuit config ──
      Sector boundaries as progress fractions (0–1) along the main track path.
      Tuned to match where .st1/.st2 sector marker paths visually bisect the track. */
-  const S1_END = 0.325;   // S1→S2 boundary
-  const S2_END = 0.635;   // S2→S3 boundary
+  let S1_END = 0.325;   // S1→S2 boundary (overwritten at init from SVG geometry)
+  let S2_END = 0.635;   // S2→S3 boundary (overwritten at init from SVG geometry)
 
   /* DRS activation zones — progress ranges where dot gets speed boost */
   const DRS_ZONES = [
@@ -269,6 +269,48 @@
     }
   }
 
+  /* ── computeSectorBoundaries: derive S1/S2 and S2/S3 crossing progress from SVG ──
+   .st2 (blue) traces S2 — its start point is the S1→S2 boundary.
+   .st3 (red)  traces S3 — its start point is the S2→S3 boundary.   */
+  function computeSectorBoundaries(svgEl) {
+    try {
+      /* Find the sector group by its Japanese ID */
+      var sectorGroup = null;
+      var groups = svgEl.querySelectorAll('g');
+      for (var i = 0; i < groups.length; i++) {
+        if (groups[i].id === 'セクター') { sectorGroup = groups[i]; break; }
+      }
+      var container = sectorGroup || svgEl;
+
+      var s2Path = container.querySelector('.st2');   // blue — start = S1→S2 boundary
+      var s3Path = container.querySelector('.st3');   // red  — start = S2→S3 boundary
+
+      if (s2Path) {
+        var p1 = s2Path.getPointAtLength(0);
+        S1_END = closestProgress(p1);
+      } else {
+        console.warn('[F1] .st2 sector path not found — using default S1_END=' + S1_END);
+      }
+
+      if (s3Path) {
+        var p2 = s3Path.getPointAtLength(0);
+        S2_END = closestProgress(p2);
+      } else {
+        console.warn('[F1] .st3 sector path not found — using default S2_END=' + S2_END);
+      }
+
+      /* Sanity check: S1_END must be less than S2_END */
+      if (S1_END >= S2_END) {
+        console.warn('[F1] S1_END >= S2_END after SVG computation — swapping endpoints');
+        var tmp = S1_END; S1_END = S2_END; S2_END = tmp;
+      }
+
+      console.log('[F1] Sector boundaries — S1_END: ' + S1_END.toFixed(4) + ', S2_END: ' + S2_END.toFixed(4));
+    } catch (e) {
+      console.warn('[F1] computeSectorBoundaries error, using defaults:', e);
+    }
+  }
+
   /* ── closestProgress: given an SVG-space point, return the progress fraction on .st0
      that is geometrically closest to it. Operates in SVG local coordinate space.
      Requires trackPath and trackLen to be set (called only from init() callbacks). ── */
@@ -307,6 +349,7 @@
       trackLen = trackPath.getTotalLength();
 
       computeNorm();
+      computeSectorBoundaries(svgEl);
       requestAnimationFrame(frame);
     } catch (e) {
       console.error('GPS init error:', e);
