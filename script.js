@@ -269,6 +269,23 @@
     }
   }
 
+  /* ── closestProgress: given an SVG-space point, return the progress fraction on .st0
+     that is geometrically closest to it. Operates in SVG local coordinate space.
+     Requires trackPath and trackLen to be set (called only from init() callbacks). ── */
+  function closestProgress(targetPt, steps) {
+    steps = steps || 2000;
+    var bestDist = Infinity, bestP = 0;
+    for (var i = 0; i <= steps; i++) {
+      var p  = i / steps;
+      var pt = trackPath.getPointAtLength(trackLen * p);
+      var dx = pt.x - targetPt.x;
+      var dy = pt.y - targetPt.y;
+      var d  = dx * dx + dy * dy;
+      if (d < bestDist) { bestDist = d; bestP = p; }
+    }
+    return bestP;
+  }
+
   /* ── Fetch + inline SVG so JS can access path geometry ── */
   async function init() {
     try {
