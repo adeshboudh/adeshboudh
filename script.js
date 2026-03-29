@@ -50,32 +50,31 @@
      Interpolated. 1.0 = average speed. >1 = straights, <1 = corners.
      Normalised by computeNorm() so total lap ≈ BASE_LAP_MS. */
   const SPD = [
-    [0.000, 1.20],  // S/F straight — DRS
-    [0.050, 0.68],  // T1 heavy braking
-    [0.100, 0.46],  // T1 apex
-    [0.140, 0.54],  // T2 exit
-    [0.190, 0.78],  // T3 short straight
-    [0.225, 0.52],  // T4-5 chicane entry
-    [0.265, 0.44],  // T5 hairpin apex  ← slowest point
-    [0.295, 0.65],  // T6-7 exit
-    [0.325, 0.80],  // S1/S2 — acceleration
-    [0.380, 1.00],  // Back straight run-up
-    [0.415, 1.35],  // DRS Z1 opens
-    [0.490, 1.55],  // Back straight peak  ← fastest point
-    [0.555, 1.22],  // DRS Z1 closes
-    [0.578, 0.52],  // T8 heavy braking
-    [0.615, 0.40],  // T8-9 marina hairpin
-    [0.635, 0.52],  // S2/S3 — marina exit
-    [0.668, 0.65],  // T10-11
-    [0.705, 0.82],  // T12 medium-speed
-    [0.740, 0.55],  // Hotel section entry
-    [0.775, 0.43],  // Hotel hairpin
-    [0.805, 0.56],  // T17 exit
-    [0.845, 0.82],  // T18-19 acceleration
-    [0.875, 1.05],  // DRS Z2 opens
-    [0.935, 1.18],  // Final straight
-    [0.975, 1.22],  // Approach finish
-    [1.000, 1.20],  // Finish line
+    [0.000, 1.20],  // S/F straight — DRS active
+    [0.050, 0.62],  // T1 heavy braking (330 km/h → ~170)
+    [0.090, 0.42],  // T1 apex — tight right-hander
+    [0.130, 0.58],  // T2 exit
+    [0.175, 0.82],  // T3 fast right
+    [0.210, 0.60],  // T4 medium
+    [0.240, 0.50],  // T5 chicane entry
+    [0.270, 0.40],  // T6 hairpin apex ← slowest point
+    [0.310, 0.68],  // T7 exit / S1–S2 region
+    [0.370, 1.00],  // back straight run-up
+    [0.410, 1.35],  // T8 DRS zone 1 opens
+    [0.480, 1.55],  // back straight peak ← fastest point
+    [0.540, 0.52],  // T9 heavy braking
+    [0.580, 0.38],  // T9 marina hairpin ← tightest corner
+    [0.620, 0.55],  // T10 exit / S2–S3 region
+    [0.660, 0.70],  // T11 medium
+    [0.700, 0.85],  // T12 fast
+    [0.735, 0.55],  // T13 hotel section entry
+    [0.765, 0.40],  // T14 hotel hairpin
+    [0.800, 0.58],  // T15 exit
+    [0.845, 0.82],  // T16 final corner onto S/F straight
+    [0.875, 1.05],  // DRS zone 2 opens
+    [0.930, 1.18],  // final straight
+    [0.975, 1.22],  // approach finish line
+    [1.000, 1.20],  // finish line
   ];
 
   function speedAt(p) {
