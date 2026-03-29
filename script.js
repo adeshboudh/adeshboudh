@@ -90,7 +90,7 @@
   }
 
   /* Normalisation: compute average speed so total lap ≈ BASE_LAP_MS */
-  const BASE_LAP_MS = 74203;
+  const BASE_LAP_MS = 88000;
   let normFactor = 1.0;
   function computeNorm() {
     const N = 2000;
@@ -163,7 +163,7 @@
     lastFrame   = now;
     curSector   = 0;
     progress    = 0;
-    lapJitter   = 0.985 + Math.random() * 0.03;  // ±1.5% lap-to-lap variation
+    lapJitter   = 0.977 + Math.random() * 0.046;  // race-pace variation → laps land 86–90 s
     if (s1El) s1El.className = 'sector s-active';
     if (s2El) s2El.className = 'sector';
     if (s3El) s3El.className = 'sector';
