@@ -35,10 +35,10 @@
   let S2_END = 0.635;   // S2→S3 boundary (overwritten at init from SVG geometry)
 
   /* DRS activation zones — progress ranges where dot gets speed boost */
-  const DRS_ZONES = [
-    [0.415, 0.575],   // Zone 1: Back straight (T7 → T8)
-    [0.875, 1.000],   // Zone 2: S/F straight (end)
-    [0.000, 0.055],   // Zone 2: S/F straight (wrap to next lap)
+  let DRS_ZONES = [
+    [0.410, 0.560],   // Zone 1: Back straight (T8 region) — overwritten at init
+    [0.875, 1.000],   // Zone 2: S/F straight (end)         — overwritten at init
+    [0.000, 0.055],   // Zone 2: S/F straight (wrap-around) — overwritten at init
   ];
 
   function inDRS(p) {
@@ -269,6 +269,69 @@
     }
   }
 
+  /* ── computeDRSZones: derive DRS activation zones from SVG DRS group ──
+   line.st10 elements mark zone boundaries. Progress values are sorted and
+   clustered into [start, end] pairs. Zone 2 wraps the lap boundary. ── */
+  function computeDRSZones(svgEl) {
+    try {
+      var drsGroup = null;
+      var groups = svgEl.querySelectorAll('g');
+      for (var i = 0; i < groups.length; i++) {
+        if (groups[i].id === 'DRS') { drsGroup = groups[i]; break; }
+      }
+      if (!drsGroup) {
+        console.warn('[F1] DRS group not found — using default DRS_ZONES');
+        return;
+      }
+
+      var lines = drsGroup.querySelectorAll('line.st10');
+      if (lines.length < 2) {
+        console.warn('[F1] Fewer than 2 DRS markers found — using defaults');
+        return;
+      }
+
+      /* Compute progress for each line's midpoint */
+      var progs = [];
+      for (var j = 0; j < lines.length; j++) {
+        var mx = (parseFloat(lines[j].getAttribute('x1')) + parseFloat(lines[j].getAttribute('x2'))) / 2;
+        var my = (parseFloat(lines[j].getAttribute('y1')) + parseFloat(lines[j].getAttribute('y2'))) / 2;
+        progs.push(closestProgress({ x: mx, y: my }));
+      }
+      progs.sort(function(a, b) { return a - b; });
+
+      /* Cluster consecutive values within GAP into one zone */
+      var zones = [];
+      var GAP   = 0.05;
+      var zs = progs[0], ze = progs[0];
+      for (var k = 1; k < progs.length; k++) {
+        if (progs[k] - progs[k - 1] > GAP) {
+          zones.push([+(zs.toFixed(3)), +(ze.toFixed(3))]);
+          zs = progs[k];
+        }
+        ze = progs[k];
+      }
+      zones.push([+(zs.toFixed(3)), +(ze.toFixed(3))]);
+
+      /* Expand wrap-around: any zone ending >= 0.90 spans the finish line */
+      var expanded = [];
+      zones.forEach(function(z) {
+        if (z[1] >= 0.90) {
+          expanded.push([z[0], 1.000]);
+          expanded.push([0.000, 0.055]);   // hard-coded wrap end (T1 braking point)
+        } else {
+          expanded.push(z);
+        }
+      });
+
+      if (expanded.length > 0) {
+        DRS_ZONES = expanded;
+        console.log('[F1] DRS zones:', JSON.stringify(DRS_ZONES));
+      }
+    } catch (e) {
+      console.warn('[F1] computeDRSZones error, using defaults:', e);
+    }
+  }
+
   /* ── computeSectorBoundaries: derive S1/S2 and S2/S3 crossing progress from SVG ──
    .st2 (blue) traces S2 — its start point is the S1→S2 boundary.
    .st3 (red)  traces S3 — its start point is the S2→S3 boundary.   */
@@ -350,6 +413,7 @@
 
       computeNorm();
       computeSectorBoundaries(svgEl);
+      computeDRSZones(svgEl);
       requestAnimationFrame(frame);
     } catch (e) {
       console.error('GPS init error:', e);
