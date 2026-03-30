@@ -128,6 +128,9 @@
   let currentVelocity = 0;
   let prevVelocity    = 0;
 
+  let THROTTLE_RATE = 0;   // set by init() after normFactor is known
+  let BRAKE_RATE    = 0;
+
   let best = { s1: Infinity, s2: Infinity, s3: Infinity };
   let prev = { s1: null,     s2: null,     s3: null     };
 
@@ -450,6 +453,19 @@
 
       computeSectorBoundaries(svgEl);
       computeDRSZones(svgEl);
+
+      /* ── Wait for ALL page resources before starting the timer ──────────
+         Root cause of the "timer starts at ~8 s" bug on refresh:
+         - SVG loads fast (local, ~0.5 s) → startLap() called at t = 500 ms
+         - Google Fonts CDN takes 8 s → page first renders at t = 8 000 ms
+         - User sees timer at   elapsed = 8 000 − 500 = 7 500 ms  ≈ 8 s
+         Fix: don't start the rAF loop until window.load fires (all
+         resources done), so startLap(now) is called at true render time. */
+      await new Promise(resolve => {
+        if (document.readyState === 'complete') resolve();
+        else window.addEventListener('load', resolve, { once: true });
+      });
+
       requestAnimationFrame(frame);
     } catch(e) {
       console.error('[F1] GPS init error:', e);
