@@ -4,16 +4,22 @@
 
 /* ── F1 GPS Simulation Engine ── */
 /* Dot drives everything: physics loop → sector crossings → lap/sector timers */
+
 (function () {
+
   const indicator = document.getElementById('driver-indicator');
-  const lapEl = document.getElementById('lap-timer');
-  const s1El = document.getElementById('s1');
-  const s2El = document.getElementById('s2');
-  const s3El = document.getElementById('s3');
-  const s1t = document.getElementById('s1-time');
-  const s2t = document.getElementById('s2-time');
-  const s3t = document.getElementById('s3-time');
-  const drsLight = document.querySelector('.drs-light');
+  const lapEl     = document.getElementById('lap-timer');
+  const s1El      = document.getElementById('s1');
+  const s2El      = document.getElementById('s2');
+  const s3El      = document.getElementById('s3');
+  const s1t       = document.getElementById('s1-time');
+  const s2t       = document.getElementById('s2-time');
+  const s3t       = document.getElementById('s3-time');
+  const drsLight  = document.querySelector('.drs-light');
+  const flLapEl   = document.getElementById('fl-lap-time');
+  const flS1El    = document.getElementById('fl-s1');
+  const flS2El    = document.getElementById('fl-s2');
+  const flS3El    = document.getElementById('fl-s3');
   if (!indicator || !lapEl) return;
 
   lapEl.textContent = '0:00.000';
@@ -24,198 +30,99 @@
   /* ── Pulse animation ── */
   const pulseStyle = document.createElement('style');
   pulseStyle.textContent = `
-    @keyframes f1-pulse {
-      0%, 100% { transform: translate(-50%,-50%) scale(1);   opacity: 1;   }
-      50%       { transform: translate(-50%,-50%) scale(2.6); opacity: 0.3; }
-    }
-    #driver-indicator { animation: f1-pulse 1.1s ease-in-out infinite; }
+  @keyframes f1-pulse {
+    0%, 100% { transform: translate(-50%,-50%) scale(1);   opacity: 1;   }
+    50%       { transform: translate(-50%,-50%) scale(2.6); opacity: 0.3; }
+  }
+  #driver-indicator { animation: f1-pulse 1.1s ease-in-out infinite; }
   `;
   document.head.appendChild(pulseStyle);
 
-  /* ── Yas Marina circuit config ──
-     Sector boundaries as progress fractions (0–1) along the main track path.
-     Tuned to match where .st1/.st2 sector marker paths visually bisect the track. */
-  let S1_END = 0.325;   // S1→S2 boundary (overwritten at init from SVG geometry)
-  let S2_END = 0.635;   // S2→S3 boundary (overwritten at init from SVG geometry)
+  /* ── Track length — overwritten from tracks.json ── */
+  let TRACK_LEN_KM = 5.281;
 
-  /* DRS activation zones — progress ranges where dot gets speed boost */
-  let DRS_ZONES = [
-    [0.410, 0.560],   // Zone 1: Back straight (T8 region) — overwritten at init
-    [0.875, 1.000],   // Zone 2: S/F straight (end)         — overwritten at init
-    [0.000, 0.055],   // Zone 2: S/F straight (wrap-around) — overwritten at init
-  ];
+  /* ── F1 Car constants — universal, independent of circuit ─────────────────
+    These describe the 2024-spec F1 car. Never change per track.
+    a_lat     : max lateral acceleration m/s² — determines corner speed
+                from radius. Calibrate once against known lap time.
+                26 m/s² ≈ medium downforce (Bahrain, Yas Marina, Baku)
+    topSpeed  : km/h ceiling on full straights (no DRS)
+    drsBoost  : km/h added when DRS is open (FIA regulated)
+    throttle  : km/h per second (~1.4g F1 acceleration)
+    brake     : km/h per second (~5.0g F1 braking)
+    ──────────────────────────────────────────────────────────────────────── */
+  const CAR = {
+    a_lat:    26,
+    topSpeed: 320,
+    drsBoost:  15,
+    throttle:  53,
+    brake:    176,
+  };
 
-  function inDRS(p) {
-    p = ((p % 1) + 1) % 1;
-    return DRS_ZONES.some(([a, b]) => p >= a && p <= b);
-  }
+  /* ── Per-track setup — overrides applied from tracks.json ─────────────────
+    Only topSpeed changes meaningfully track-to-track (wing level).
+    Populated in init(). Falls back to CAR defaults if not in JSON.
+    ──────────────────────────────────────────────────────────────────────── */
+  let PHYSICS = { ...CAR };
 
-  /* ── Speed profile: [progress, multiplier]
-     Interpolated. 1.0 = average speed. >1 = straights, <1 = corners.
-     Normalised by computeNorm() so total lap ≈ BASE_LAP_MS. */
-  const SPD = [
-    [0.000, 1.20],  // S/F straight — DRS active
-    [0.050, 0.62],  // T1 heavy braking (330 km/h → ~170)
-    [0.090, 0.42],  // T1 apex — tight right-hander
-    [0.130, 0.58],  // T2 exit
-    [0.175, 0.82],  // T3 fast right
-    [0.210, 0.60],  // T4 medium
-    [0.240, 0.50],  // T5 chicane entry
-    [0.270, 0.40],  // T6 hairpin apex ← slowest point
-    [0.310, 0.68],  // T7 exit / S1–S2 region
-    [0.370, 1.00],  // back straight run-up
-    [0.410, 1.35],  // T8 DRS zone 1 opens
-    [0.480, 1.55],  // back straight peak ← fastest point
-    [0.540, 0.52],  // T9 heavy braking
-    [0.580, 0.38],  // T9 marina hairpin ← tightest corner
-    [0.620, 0.55],  // T10 exit / S2–S3 region
-    [0.660, 0.70],  // T11 medium
-    [0.700, 0.85],  // T12 fast
-    [0.735, 0.55],  // T13 hotel section entry
-    [0.765, 0.40],  // T14 hotel hairpin
-    [0.800, 0.58],  // T15 exit
-    [0.845, 0.82],  // T16 final corner onto S/F straight
-    [0.875, 1.05],  // DRS zone 2 opens
-    [0.930, 1.18],  // final straight
-    [0.975, 1.22],  // approach finish line
-    [1.000, 1.20],  // finish line
-  ];
+  /* ── Sector boundaries — lap-relative, overwritten at init ── */
+  let S1_END = 0.325;
+  let S2_END = 0.635;
 
-  function speedAt(p) {
-    p = ((p % 1) + 1) % 1;
-    for (let i = 0; i < SPD.length - 1; i++) {
-      if (p >= SPD[i][0] && p <= SPD[i+1][0]) {
-        const t = (p - SPD[i][0]) / (SPD[i+1][0] - SPD[i][0]);
-        return SPD[i][1] + (SPD[i+1][1] - SPD[i][1]) * t;
-      }
-    }
-    return SPD[SPD.length - 1][1];
-  }
+  /* ── DRS zones — raw SVG progress fractions ───────────────────────────────
+    Populated by computeDRSZones() from invisible #DRS-ZONES paths.
+    Falls back to st12 line markers, then tracks.json fallback.
+    Used for: visual glow + DRS_ZONES_LAP conversion.
+    ──────────────────────────────────────────────────────────────────────── */
+  let DRS_ZONES = [];
 
-  /* Normalisation: compute harmonic mean so total lap = exactly BASE_LAP_MS.
-     Derivation: dp/dt = speedAt(p)/(normFactor*BASE_LAP_MS)
-     → T = normFactor * BASE_LAP_MS * ∫₀¹ dp/speedAt(p)
-     → normFactor = 1 / avg(1/speedAt) to make T = BASE_LAP_MS */
-  const BASE_LAP_MS = 88000;
-  let normFactor = 1.0;
-  function computeNorm() {
-    const N = 2000;
-    let s = 0;
-    for (let i = 0; i < N; i++) s += 1 / speedAt(i / N);
-    normFactor = N / s;  // harmonic mean = 1 / avg(1/speedAt)
-  }
+  /* ── Physics DRS zones — lap-relative ────────────────────────────────────
+    Built by buildPhysicsDRS() from DRS_ZONES after LAP_ORIGIN is known.
+    Controls speed boost and prevents mid-zone braking.
+    Wrapping zones have b > 1.0.
+    ──────────────────────────────────────────────────────────────────────── */
+  let DRS_ZONES_LAP = [];
 
   /* ── Race state ── */
-  let lapProgress = 0;        // fraction within current lap (0=finish line, 1=finish line again)
-  let progress    = 0;        // raw .st0 path position = (LAP_ORIGIN + lapProgress) % 1
-  let LAP_ORIGIN  = 0;        // raw path fraction of the finish line (computed from .st3 end)
-  let lapState    = 'INIT';   // INIT | RUNNING
+  let lapProgress = 0;
+  let progress    = 0;
+  let LAP_ORIGIN  = 0;
+  let lapState    = 'INIT';
   let lapStart    = null;
   let sectorStart = null;
-  let curSector   = 0;        // 0=S1, 1=S2, 2=S3
+  let curSector   = 0;
   let lastFrame   = null;
-  let lapJitter   = 1.0;      // per-lap speed variation
+  let lapJitter   = 1.0;
+  let currentSpeed_kmh = 0;
 
-  /* ── Velocity state (NEW) ──────────────────────────────────────────
-   currentVelocity  : what the car is actually doing right now
-   prevVelocity     : last frame's velocity (available for telemetry)
-   
-   The controller drives currentVelocity toward targetVelocity each
-   frame using asymmetric throttle/brake rates. lapProgress advances
-   by currentVelocity — not directly by speedAt() — so the dot
-   accelerates and brakes with inertia instead of teleporting to speed.
-   ────────────────────────────────────────────────────────────────── */
-  let currentVelocity = 0;
-  let prevVelocity    = 0;
+  /* ── Cold start ── */
+  let isFirstLap    = true;
+  let lightsOutDelay = 0;
 
-  let THROTTLE_RATE = 0;   // set by init() after normFactor is known
-  let BRAKE_RATE    = 0;
-
+  /* ── Sector records ── */
   let best = { s1: Infinity, s2: Infinity, s3: Infinity };
   let prev = { s1: null,     s2: null,     s3: null     };
 
-  /* ── Formatting ── */
-  function fmtLap(ms) {
-    ms = Math.floor(ms);
-    const mi  = Math.floor(ms / 60000);
-    const sec = Math.floor((ms % 60000) / 1000);
-    const ms3 = ms % 1000;
-    return `${mi}:${String(sec).padStart(2,'0')}.${String(ms3).padStart(3,'0')}`;
-  }
-  function fmtSec(ms) {
-    ms = Math.floor(ms);
-    return `${Math.floor(ms / 1000)}.${String(ms % 1000).padStart(3,'0')}`;
+  /* ── Fastest lap ── */
+  let bestLapRecord = { lapMs: Infinity, s1: null, s2: null, s3: null };
+
+  function updateFLDisplay() {
+    if (bestLapRecord.lapMs === Infinity) return;
+    if (flLapEl) flLapEl.textContent = fmtLap(bestLapRecord.lapMs);
+    if (flS1El)  flS1El.textContent  = bestLapRecord.s1 !== null ? fmtSec(bestLapRecord.s1) : '--.-.-';
+    if (flS2El)  flS2El.textContent  = bestLapRecord.s2 !== null ? fmtSec(bestLapRecord.s2) : '--.-.-';
+    if (flS3El)  flS3El.textContent  = bestLapRecord.s3 !== null ? fmtSec(bestLapRecord.s3) : '--.-.-';
   }
 
-  /* ── Sector color logic (same rules as real F1 timing tower) ── */
-  function sectorCls(key, ms) {
-    if (prev[key] === null) return 's-green';   // first lap ever
-    if (ms < best[key])     return 's-purple';  // fastest ever (purple)
-    if (ms <= prev[key])    return 's-green';   // beats last lap (green)
-    return 's-yellow';                           // slower (yellow)
-  }
-
-  /* ── Dot glow based on sector / DRS ──
-     lapP  = lap-relative progress (0–1, used for sector color)
-     rawP  = raw .st0 progress    (0–1, used for DRS zone lookup) */
-  function dotGlow(lapP, rawP) {
-    if (inDRS(rawP))      return { color: '#00D2BE', drs: true  };
-    if (lapP < S1_END)    return { color: '#BF00FF', drs: false };
-    if (lapP < S2_END)    return { color: '#00D45E', drs: false };
-    return                       { color: '#FFE900', drs: false };
-  }
-
-  /* ── Record completed sector ── */
-  function completeSector(num, ms) {
-    const key  = `s${num}`;
-    const el   = [s1El, s2El, s3El][num - 1];
-    const tel  = [s1t,  s2t,  s3t ][num - 1];
-    if (!el || !tel) return;
-    el.className    = `sector ${sectorCls(key, ms)}`;
-    tel.textContent = fmtSec(ms);
-    if (ms < best[key]) best[key] = ms;
-    prev[key] = ms;
-  }
-
-  /* ── Reset for new lap ── */
-  function startLap(now) {
-    lapStart    = now;
-    sectorStart = now;
-    lastFrame   = now;
-    curSector   = 0;
-    lapProgress = 0;
-    progress    = LAP_ORIGIN;
-    lapJitter   = 0.977 + Math.random() * 0.046;
-
-    /* First lap only: seed velocity to finish-line speed so the dot
-      doesn't ramp up from zero on the S/F straight.
-      On lap completions currentVelocity carries over — the car
-      doesn't stop at the line. */
-    if (currentVelocity === 0) {
-      currentVelocity = speedAt(0) / normFactor;
-    }
-
-    if (s1El) s1El.className = 'sector s-active';
-    if (s1t)  s1t.textContent = '0.000';
-
-    // S2 and S3: show previous lap time until sector is completed this lap.
-    // Only blank them on the very first lap when there's no data yet.
-    if (prev.s2 === null) {
-      if (s2El) s2El.className = 'sector';
-      if (s2t)  s2t.textContent = '--.-.-';
-    }
-    if (prev.s3 === null) {
-      if (s3El) s3El.className = 'sector';
-      if (s3t)  s3t.textContent = '--.-.-';
-    }
-
-    lapEl.textContent = '0:00.000';
-  }
+  /* ── Physics lookup tables ── */
+  let HOLD_ZONES = [];   // [{ start, end, speed }] entry→apex per corner
+  let ENTRY_LIST = [];   // [{ lapAt, speed }] sorted by lapAt
 
   /* ── SVG coordinate mapping ── */
-  let trackPath = null;
-  let trackLen  = 0;
-  let cachedCTM = null; // avoid forcing layout reflow at 60fps
+  let trackPath  = null;
+  let trackLen   = 0;
+  let trackScale = 1;    // metres per SVG unit = (TRACK_LEN_KM × 1000) / trackLen
+  let cachedCTM  = null;
 
   window.addEventListener('resize', () => { cachedCTM = null; });
 
@@ -227,19 +134,139 @@
     return new DOMPoint(pt.x, pt.y).matrixTransform(cachedCTM);
   }
 
-  /* ── Tab visibility: freeze timers while hidden ──────────────────────
-   Without this, lapStart/sectorStart are real timestamps so coming
-   back after 10s would instantly show +10s on the timer.
-   Instead: advance both anchors by the hidden gap so they reflect
-   only simulated (active) time. The 50ms dt-clamp handles position. ── */
+  /* ── Tab visibility: freeze timers while hidden ── */
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) return;
-    if (lastFrame === null) return;
+    if (document.hidden || lastFrame === null) return;
     const gap = performance.now() - lastFrame;
     lapStart    += gap;
     sectorStart += gap;
     lastFrame    = performance.now();
   });
+
+  /* ── Formatting ── */
+  function fmtLap(ms) {
+    ms = Math.floor(ms);
+    return `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2,'0')}.${String(ms % 1000).padStart(3,'0')}`;
+  }
+  function fmtSec(ms) {
+    ms = Math.floor(ms);
+    return `${Math.floor(ms / 1000)}.${String(ms % 1000).padStart(3,'0')}`;
+  }
+
+  /* ── Sector color ── */
+  function sectorCls(key, ms) {
+    if (prev[key] === null)    return 's-green';
+    if (ms < best[key])        return 's-purple';
+    if (ms <= prev[key])       return 's-green';
+    return 's-yellow';
+  }
+
+  /* ── Dot glow ── */
+  function dotGlow(lapP) {
+    if (inDRSLap(lapP)) return { color: '#00D2BE', drs: true  };
+    if (lapP < S1_END)  return { color: '#BF00FF', drs: false };
+    if (lapP < S2_END)  return { color: '#00D45E', drs: false };
+    return                     { color: '#FFE900', drs: false };
+  }
+
+  /* ── Record completed sector ── */
+  function completeSector(num, ms) {
+    const key = `s${num}`;
+    const el  = [s1El, s2El, s3El][num - 1];
+    const tel = [s1t,  s2t,  s3t ][num - 1];
+    if (!el || !tel) return;
+    el.className    = `sector ${sectorCls(key, ms)}`;
+    tel.textContent = fmtSec(ms);
+    if (ms < best[key]) best[key] = ms;
+    prev[key] = ms;
+  }
+
+  /* ── Reset for new lap ── */
+  function startLap(now) {
+    sectorStart = now;
+    lastFrame   = now;
+    curSector   = 0;
+    lapProgress = 0;
+    progress    = LAP_ORIGIN;
+    lapJitter   = 0.977 + Math.random() * 0.046;
+
+    if (isFirstLap) {
+      currentSpeed_kmh = 0;
+      lightsOutDelay   = 1000;
+      isFirstLap       = false;
+      lapStart         = null;    // ← defer: set on first real tick, not here
+    } else {
+      lapStart = now;
+    }
+
+    if (s1El) s1El.className    = 'sector s-active';
+    if (s1t)  s1t.textContent   = '0.000';
+    if (s2El) s2El.className    = 'sector';
+    if (s2t)  s2t.textContent   = '--.-.-';
+    if (s3El) s3El.className    = 'sector';
+    if (s3t)  s3t.textContent   = '--.-.-';
+    lapEl.textContent            = '0:00.000';
+  }
+
+  /* ── Physics: corner speed from real-world radius ─────────────────────────
+    v = sqrt(a_lat × r_metres)
+    Uses trackScale to convert SVG κ into real metres.
+    Override wins if tracks.json provides racingLine for this corner.
+    ──────────────────────────────────────────────────────────────────────── */
+  function cornerSpeedFromKappa(kappa, override) {
+    if (override != null) return override;
+    if (kappa < 1e-6) return PHYSICS.topSpeed;   // near-zero κ = straight
+    const r_metres = (1 / kappa) * trackScale;
+    const v_kmh    = Math.sqrt(PHYSICS.a_lat * r_metres) * 3.6;
+    return Math.max(40, Math.min(PHYSICS.topSpeed, Math.round(v_kmh)));
+  }
+
+  /* ── Physics: inHoldZone ── */
+  function inHoldZone(lapP) {
+    for (const z of HOLD_ZONES) {
+      if (lapP >= z.start && lapP <= z.end) return z.speed;
+    }
+    return null;
+  }
+
+  /* ── Physics: lookAheadEntry ── */
+  function lookAheadEntry(lapP) {
+    for (const e of ENTRY_LIST) {
+      if (e.lapAt > lapP) return e;
+    }
+    return { lapAt: ENTRY_LIST[0].lapAt + 1.0, speed: ENTRY_LIST[0].speed };
+  }
+
+  /* ── Physics: inDRSLap ── */
+  function inDRSLap(lapP) {
+    for (const [a, b] of DRS_ZONES_LAP) {
+      if (b <= 1.0) {
+        if (lapP >= a && lapP <= b) return true;
+      } else {
+        if (lapP >= a || lapP <= b - 1.0) return true;
+      }
+    }
+    return false;
+  }
+
+  /* ── Physics: getTargetSpeed ── */
+  function getTargetSpeed(lapP) {
+    const holdSpd = inHoldZone(lapP);
+    if (holdSpd !== null) return holdSpd * lapJitter;
+
+    const next = lookAheadEntry(lapP);
+    const drs  = inDRSLap(lapP);
+    const top  = (PHYSICS.topSpeed + (drs ? PHYSICS.drsBoost : 0)) * lapJitter;
+
+    if (currentSpeed_kmh > next.speed) {
+      const approachSpeed = Math.max(currentSpeed_kmh, top);
+      const brakeDist_km  = (approachSpeed ** 2 - next.speed ** 2) / (7200 * PHYSICS.brake);
+      const distAhead_km = (next.lapAt - lapP) * TRACK_LEN_KM;
+      if (distAhead_km <= brakeDist_km * 1.05) return next.speed * lapJitter;
+    }
+
+    return top;
+  }
 
   /* ── Main animation loop ── */
   function frame(now) {
@@ -248,76 +275,80 @@
 
     if (lapState === 'INIT') {
       lapState = 'RUNNING';
-      startLap(now); // now = fresh rAF timestamp, guaranteed correct
-      return;        // ← ADD THIS: skip the dt calculation on the very
-    }               //   first frame so lastFrame=now before any dt math
-
-    const dt = Math.min(now - lastFrame, 50); // 50ms clamp: tab-switch safety
-    lastFrame = now;
-
-    /* ── PHYSICS: asymmetric velocity controller ───────────────────────
-      targetVelocity = what the track profile says the car should do.
-      currentVelocity chases it with different rates for throttle vs brake.
-      
-      Throttle : +THROTTLE_RATE per ms  (smooth, gradual build)
-      Braking  : -BRAKE_RATE   per ms  (sharp, ~3.33× harder)
-      
-      lapProgress advances by currentVelocity — not by speedAt() directly.
-      This gives the dot real inertia: you see it scrub speed into T9,
-      ride the brakes through the hairpin, and slowly unwind on exit.
-      ──────────────────────────────────────────────────────────────── */
-    prevVelocity    = currentVelocity;
-    const targetVel = (speedAt(lapProgress) / normFactor) * lapJitter;
-
-    if (currentVelocity < targetVel) {
-      // Throttle: controlled ramp up
-      currentVelocity = Math.min(currentVelocity + THROTTLE_RATE * dt, targetVel);
-    } else {
-      // Brake: sharper deceleration toward corner target
-      currentVelocity = Math.max(currentVelocity - BRAKE_RATE * dt, targetVel);
+      startLap(now);
+      return;
     }
 
-    /* Position advances by controlled velocity, not lookup directly */
-    lapProgress += currentVelocity * dt / BASE_LAP_MS;
+    const dt = Math.min(now - lastFrame, 50);
+    lastFrame = now;
+
+    /* Lights-out freeze */
+    if (lightsOutDelay > 0) {
+      lightsOutDelay -= dt;
+      if (lapStart === null) lapStart = now;   // ← anchor only when freeze starts ticking
+      lapStart    += dt;
+      sectorStart += dt;
+      return;
+    }
+    
+    /* First tick after freeze expires */
+    if (lapStart === null) lapStart = now;
+    
+    const targetSpeed = getTargetSpeed(lapProgress);
+    if (currentSpeed_kmh < targetSpeed) {
+      currentSpeed_kmh = Math.min(currentSpeed_kmh + PHYSICS.throttle * dt / 1000, targetSpeed);
+    } else {
+      currentSpeed_kmh = Math.max(currentSpeed_kmh - PHYSICS.brake   * dt / 1000, targetSpeed);
+    }
+
+    lapProgress += (currentSpeed_kmh * dt) / (TRACK_LEN_KM * 3600000);
     progress     = (LAP_ORIGIN + lapProgress) % 1;
 
     const elapsed = now - lapStart;
 
-    /* ── Sector crossings ── */
     if (curSector === 0 && lapProgress >= S1_END) {
       completeSector(1, now - sectorStart);
-      curSector   = 1;
-      sectorStart = now;
+      curSector = 1; sectorStart = now;
       if (s2El) s2El.className = 'sector s-active';
     }
     if (curSector === 1 && lapProgress >= S2_END) {
       completeSector(2, now - sectorStart);
-      curSector   = 2;
-      sectorStart = now;
+      curSector = 2; sectorStart = now;
       if (s3El) s3El.className = 'sector s-active';
     }
 
-    /* ── Lap complete ── */
     if (lapProgress >= 1.0) {
       completeSector(3, now - sectorStart);
       lapEl.textContent = fmtLap(elapsed);
+
+      /* ── Calibration log ── */
+      console.log(
+        `[F1] LAP COMPLETE | time=${fmtLap(elapsed)}` +
+        ` | S1=${prev.s1 != null ? fmtSec(prev.s1) : '?'}` +
+        ` S2=${prev.s2 != null ? fmtSec(prev.s2) : '?'}` +
+        ` S3=${prev.s3 != null ? fmtSec(prev.s3) : '?'}`
+      );
+
+      if (elapsed < bestLapRecord.lapMs) {
+        bestLapRecord = { lapMs: elapsed, s1: prev.s1, s2: prev.s2, s3: prev.s3 };
+        updateFLDisplay();
+        console.log(`[F1] ★ NEW FASTEST LAP: ${fmtLap(bestLapRecord.lapMs)}`);
+      }
       startLap(now);
       const fp = screenPt(LAP_ORIGIN);
       if (fp) { indicator.style.left = `${fp.x}px`; indicator.style.top = `${fp.y}px`; }
       return;
     }
 
-    /* ── Timer displays ── */
     lapEl.textContent = fmtLap(elapsed);
     if (curSector === 0 && s1t) s1t.textContent = fmtSec(now - sectorStart);
     if (curSector === 1 && s2t) s2t.textContent = fmtSec(now - sectorStart);
     if (curSector === 2 && s3t) s3t.textContent = fmtSec(now - sectorStart);
 
-    /* ── Dot position and glow ── */
     const pt = screenPt(progress);
     if (!pt) return;
 
-    const { color, drs } = dotGlow(lapProgress, progress);
+    const { color, drs } = dotGlow(lapProgress);
     indicator.style.left      = `${pt.x}px`;
     indicator.style.top       = `${pt.y}px`;
     indicator.style.boxShadow = drs
@@ -330,148 +361,434 @@
     }
   }
 
-  /* ── computeDRSZones: derive DRS activation zones from SVG DRS group ──
-   line.st10 elements mark zone boundaries. Progress values are sorted and
-   clustered into [start, end] pairs. Zone 2 wraps the lap boundary. ── */
-  function computeDRSZones(svgEl) {
-    try {
-      var drsGroup = null;
-      var groups = svgEl.querySelectorAll('g');
-      for (var i = 0; i < groups.length; i++) {
-        if (groups[i].id === 'DRS') { drsGroup = groups[i]; break; }
-      }
-      if (!drsGroup) { console.warn('[F1] DRS group not found — using defaults'); return; }
-      var lines = drsGroup.querySelectorAll('line.st10');
-      if (lines.length < 2) { console.warn('[F1] <2 DRS markers — using defaults'); return; }
-      var progs = [];
-      for (var j = 0; j < lines.length; j++) {
-        var mx = (parseFloat(lines[j].getAttribute('x1')) + parseFloat(lines[j].getAttribute('x2'))) / 2;
-        var my = (parseFloat(lines[j].getAttribute('y1')) + parseFloat(lines[j].getAttribute('y2'))) / 2;
-        progs.push(closestProgress({ x: mx, y: my }));
-      }
-      progs.sort(function(a, b) { return a - b; });
-      var zones = [], GAP = 0.05, zs = progs[0], ze = progs[0];
-      for (var k = 1; k < progs.length; k++) {
-        if (progs[k] - progs[k-1] > GAP) { zones.push([+(zs.toFixed(3)), +(ze.toFixed(3))]); zs = progs[k]; }
-        ze = progs[k];
-      }
-      zones.push([+(zs.toFixed(3)), +(ze.toFixed(3))]);
-      var expanded = [];
-      zones.forEach(function(z) {
-        if (z[1] >= 0.90) { expanded.push([z[0], 1.000]); expanded.push([0.000, 0.055]); }
-        else { expanded.push(z); }
-      });
-      if (expanded.length > 0) { DRS_ZONES = expanded; console.log('[F1] DRS zones:', JSON.stringify(DRS_ZONES)); }
-    } catch(e) { console.warn('[F1] computeDRSZones error, using defaults:', e); }
-  }
-
-  /* ── computeSectorBoundaries ──
-   .st3 (red)  = Sector 1: start = finish line → LAP_ORIGIN, end = S1/S2 boundary
-   .st2 (blue) = Sector 2: start = S1/S2 boundary, end = S2/S3 boundary
-   .st1 (yellow) = Sector 3: implicitly finish line (not queried) ── */
-  function computeSectorBoundaries(svgEl) {
-    try {
-      var sectorGroup = null;
-      var groups = svgEl.querySelectorAll('g');
-      for (var i = 0; i < groups.length; i++) {
-        if (groups[i].id === 'セクター') { sectorGroup = groups[i]; break; }
-      }
-      var container = sectorGroup || svgEl;
-      var s3Path = container.querySelector('.st3'); // red  = S1 path
-      var s2Path = container.querySelector('.st2'); // blue = S2 path
-
-      if (s3Path) {
-        LAP_ORIGIN = closestProgress(s3Path.getPointAtLength(0));
-        console.log('[F1] LAP_ORIGIN:', LAP_ORIGIN.toFixed(4));
-      } else {
-        console.warn('[F1] .st3 not found — LAP_ORIGIN stays 0');
-      }
-
-      var rawS1 = S1_END, rawS2 = S2_END;
-      if (s3Path) rawS1 = closestProgress(s3Path.getPointAtLength(s3Path.getTotalLength()));
-      else        console.warn('[F1] .st3 not found — using default S1_END');
-      if (s2Path) rawS2 = closestProgress(s2Path.getPointAtLength(s2Path.getTotalLength()));
-      else        console.warn('[F1] .st2 not found — using default S2_END');
-
-      S1_END = ((rawS1 - LAP_ORIGIN) + 1) % 1;
-      S2_END = ((rawS2 - LAP_ORIGIN) + 1) % 1;
-
-      if (S1_END >= S2_END) {
-        console.warn('[F1] S1_END >= S2_END — swapping');
-        var tmp = S1_END; S1_END = S2_END; S2_END = tmp;
-      }
-      console.assert(S1_END < S2_END && S2_END < 1.0, '[F1] Sector boundaries sanity check failed');
-      console.log('[F1] S1_END:', S1_END.toFixed(4), '| S2_END:', S2_END.toFixed(4));
-    } catch(e) { console.warn('[F1] computeSectorBoundaries error, using defaults:', e); }
-  }
-
-  /* ── closestProgress: given an SVG-space point, return the progress fraction on .st0
-     that is geometrically closest to it. Operates in SVG local coordinate space.
-     Requires trackPath and trackLen to be set (called only from init() callbacks). ── */
-  function closestProgress(targetPt, steps) {
-    steps = steps || 2000;
-    var best = Infinity, bestP = 0;
-    for (var i = 0; i <= steps; i++) {
-      var p  = i / steps;
-      var pt = trackPath.getPointAtLength(trackLen * p);
-      var d  = (pt.x - targetPt.x) ** 2 + (pt.y - targetPt.y) ** 2;
-      if (d < best) { best = d; bestP = p; }
+  /* ── closestProgress ── */
+  function closestProgress(targetPt, steps = 2000) {
+    let bestD = Infinity, bestP = 0;
+    for (let i = 0; i <= steps; i++) {
+      const p  = i / steps;
+      const pt = trackPath.getPointAtLength(trackLen * p);
+      const d  = (pt.x - targetPt.x) ** 2 + (pt.y - targetPt.y) ** 2;
+      if (d < bestD) { bestD = d; bestP = p; }
     }
     return bestP;
   }
 
-  /* ── Fetch + inline SVG so JS can access path geometry ── */
+  /* ── computeDRSZones ───────────────────────────────────────────────────────
+    Priority 1: invisible #DRS-ZONES paths  (getPointAtLength start/end)
+    Priority 2: st12 line markers in #DRS group
+    Priority 3: tracks.json fallback.drsZones (already set before this runs)
+    ──────────────────────────────────────────────────────────────────────── */
+  function computeDRSZones(svgEl) {
+    try {
+      /* Priority 1 — invisible drs-zone paths */
+      const zonePaths = svgEl.querySelectorAll('#DRS-ZONES .drs-zone');
+      // console.log('[F1] DRS invisible paths found:', zonePaths.length);
+
+      if (zonePaths.length > 0) {
+        const zones = [];
+        for (const [idx, zp] of [...zonePaths].entries()) {
+          const len    = zp.getTotalLength();
+          const startP = closestProgress(zp.getPointAtLength(0));
+          const endP   = closestProgress(zp.getPointAtLength(len));
+          // console.log(`[F1]   Zone ${idx + 1}: rawStart=${startP.toFixed(4)} rawEnd=${endP.toFixed(4)} pathLen=${len.toFixed(1)}`);
+          zones.push([+startP.toFixed(3), +endP.toFixed(3)]);
+        }
+        DRS_ZONES = zones;
+        console.log('[F1] ✓ DRS source: invisible paths |', JSON.stringify(DRS_ZONES));
+        return;
+      }
+
+      /* Priority 2 — st12 boundary markers */
+      const drsGroup = [...svgEl.querySelectorAll('g')].find(g => g.id === 'DRS');
+      // console.log('[F1] DRS group (#DRS) found:', !!drsGroup);
+      if (drsGroup) {
+        const markers = drsGroup.querySelectorAll('line.st12');
+        // console.log('[F1] st12 markers found:', markers.length);
+        if (markers.length >= 2) {
+          const progs = [...markers].map(l => {
+            const mx = (parseFloat(l.getAttribute('x1')) + parseFloat(l.getAttribute('x2'))) / 2;
+            const my = (parseFloat(l.getAttribute('y1')) + parseFloat(l.getAttribute('y2'))) / 2;
+            return closestProgress({ x: mx, y: my });
+          }).sort((a, b) => a - b);
+
+          DRS_ZONES = [];
+          for (let i = 0; i + 1 < progs.length; i += 2)
+            DRS_ZONES.push([+progs[i].toFixed(3), +progs[i + 1].toFixed(3)]);
+          console.log('[F1] ✓ DRS source: st12 markers |', JSON.stringify(DRS_ZONES));
+          return;
+        }
+      }
+
+      /* Priority 3 — fallback from tracks.json (already set) */
+      console.warn('[F1] ✗ No SVG DRS markers — using tracks.json fallback:', JSON.stringify(DRS_ZONES));
+
+    } catch (e) {
+      console.warn('[F1] computeDRSZones error:', e);
+    }
+  }
+
+  /* ── buildPhysicsDRS ───────────────────────────────────────────────────────
+    Converts DRS_ZONES (raw SVG progress) → DRS_ZONES_LAP (lap-relative).
+    The DRS zone end is pulled back by the braking distance from
+    (topSpeed + drsBoost) to the corner speed, so the car never brakes
+    mid-zone.
+    Wrapping zones (S/F straight) get end += 1.0.
+    ──────────────────────────────────────────────────────────────────────── */
+  function buildPhysicsDRS() {
+    DRS_ZONES_LAP = [];
+    const drsApproach = PHYSICS.topSpeed + PHYSICS.drsBoost;
+    // console.log(`[F1] buildPhysicsDRS — drsApproach: ${drsApproach} km/h | ${DRS_ZONES.length} zone(s)`);
+
+    for (const [idx, [rawStart, rawEnd]] of DRS_ZONES.entries()) {
+      const lapStart = ((rawStart - LAP_ORIGIN) + 1) % 1;
+      let   lapEnd   = ((rawEnd   - LAP_ORIGIN) + 1) % 1;
+
+      let cornerSpeedAtExit = PHYSICS.topSpeed;
+      for (const e of ENTRY_LIST) {
+        if (e.lapAt > lapEnd) { cornerSpeedAtExit = e.speed; break; }
+      }
+
+      const bd     = (drsApproach ** 2 - cornerSpeedAtExit ** 2) / (7200 * PHYSICS.brake * TRACK_LEN_KM);
+      const rawEnd_pulled = lapEnd;
+      lapEnd = ((lapEnd - bd) % 1 + 1) % 1;
+      if (lapEnd < lapStart) lapEnd += 1.0;
+
+      DRS_ZONES_LAP.push([+lapStart.toFixed(3), +lapEnd.toFixed(3)]);
+    }
+    console.log('[F1] DRS_ZONES_LAP:', JSON.stringify(DRS_ZONES_LAP));
+  }
+
+  /* ── computeSectorBoundaries ── */
+  function computeSectorBoundaries(svgEl, fbS1, fbS2) {
+    try {
+      const sectorGroup = [...svgEl.querySelectorAll('g')].find(g => g.id === 'セクター');
+      const container   = sectorGroup || svgEl;
+      const s3Path      = container.querySelector('.st3');
+      const s2Path      = container.querySelector('.st2');
+
+      // console.log('[F1] Sector paths found — .st3:', !!s3Path, '.st2:', !!s2Path);
+
+      if (s3Path) {
+        LAP_ORIGIN = closestProgress(s3Path.getPointAtLength(0));
+        console.log('[F1] LAP_ORIGIN (raw SVG):', LAP_ORIGIN.toFixed(4));
+      } else {
+        console.warn('[F1] .st3 not found — LAP_ORIGIN stays 0');
+      }
+
+      const rawS1 = s3Path ? closestProgress(s3Path.getPointAtLength(s3Path.getTotalLength())) : fbS1;
+      const rawS2 = s2Path ? closestProgress(s2Path.getPointAtLength(s2Path.getTotalLength())) : fbS2;
+      // console.log('[F1] Sector raw SVG progress — S1 boundary:', rawS1.toFixed(4), '| S2 boundary:', rawS2.toFixed(4));
+
+      S1_END = ((rawS1 - LAP_ORIGIN) + 1) % 1;
+      S2_END = ((rawS2 - LAP_ORIGIN) + 1) % 1;
+      if (S1_END >= S2_END) [S1_END, S2_END] = [S2_END, S1_END];
+      console.log('[F1] S1_END (lapAt):', S1_END.toFixed(4), '| S2_END (lapAt):', S2_END.toFixed(4));
+
+    } catch (e) {
+      console.warn('[F1] computeSectorBoundaries error — using fallback:', e);
+      S1_END = ((fbS1 - LAP_ORIGIN) + 1) % 1;
+      S2_END = ((fbS2 - LAP_ORIGIN) + 1) % 1;
+    }
+  }
+
+  /* ── detectCorners ── */
+  function detectCorners(path, len) {
+    const N   = 3000;
+    const pts = [];
+    for (let i = 0; i <= N; i++) {
+      const pt = path.getPointAtLength(len * i / N);
+      pts.push({ x: pt.x, y: pt.y, p: i / N });
+    }
+
+    const W     = 4;
+    const kappa = new Array(N + 1).fill(0);
+    for (let i = W; i <= N - W; i++) {
+      const dx1   = (pts[i + W].x - pts[i - W].x) / (2 * W);
+      const dy1   = (pts[i + W].y - pts[i - W].y) / (2 * W);
+      const dx2   = (pts[i + W].x - 2 * pts[i].x + pts[i - W].x) / (W * W);
+      const dy2   = (pts[i + W].y - 2 * pts[i].y + pts[i - W].y) / (W * W);
+      const denom = Math.pow(dx1 * dx1 + dy1 * dy1, 1.5);
+      kappa[i]    = denom > 1e-12 ? Math.abs(dx1 * dy2 - dy1 * dx2) / denom : 0;
+    }
+
+    const THRESHOLD = 0.003;
+    const MIN_GAP   = 80;
+    const corners   = [];
+    let   lastExit  = -MIN_GAP;
+
+    for (let i = W + 1; i <= N - W - 1; i++) {
+      if (
+        kappa[i] > THRESHOLD &&
+        kappa[i] >= kappa[i - 1] &&
+        kappa[i] >= kappa[i + 1] &&
+        i - lastExit > MIN_GAP
+      ) {
+        let ei = i;
+        while (ei > lastExit + 5 && kappa[ei] > kappa[i] * 0.30) ei--;
+        let xi = i;
+        while (xi < N - 5  && kappa[xi] > kappa[i] * 0.30) xi++;
+
+        corners.push({ entryP: pts[ei].p, apexP: pts[i].p, exitP: pts[xi].p, kappa: kappa[i] });
+        lastExit = xi;
+        i        = xi;
+      }
+    }
+
+    return corners;
+  }
+
+  /* ── debugDRSOverlay ───────────────────────────────────────────────────────
+    Draws a colored stroke along .st0 between each DRS zone's
+    detected start and end progress fractions.
+    GREEN  = DRS zone active region
+    RED    = braking-pullback region (lapEnd → rawEnd)
+    Visible in browser, remove after calibration is done.
+    ──────────────────────────────────────────────────────────────────────── */
+  // function debugDRSOverlay(svgEl) {
+  //   const STEPS = 800;                    // resolution of the drawn overlay
+  //   const DRS_COLOR   = '#00FF88';        // zone active  (green)
+  //   const BRAKE_COLOR = '#FF3300';        // brake pullback (red)
+  //   const WIDTH       = 4;
+
+  //   DRS_ZONES.forEach(([rawStart, rawEnd], idx) => {
+  //     const lapStart    = ((rawStart  - LAP_ORIGIN) + 1) % 1;
+  //     const lapEnd_full = ((rawEnd    - LAP_ORIGIN) + 1) % 1;
+  //     const lapEnd_phys = DRS_ZONES_LAP[idx]?.[1] % 1;  // physics end (mod 1 for wrap)
+
+  //     /* Draw active DRS region (lapStart → lapEnd_phys) */
+  //     drawSegment(svgEl, lapStart, lapEnd_phys, DRS_COLOR, WIDTH, `drs-active-${idx}`);
+
+  //     /* Draw brake-pullback region (lapEnd_phys → lapEnd_full) */
+  //     drawSegment(svgEl, lapEnd_phys, lapEnd_full, BRAKE_COLOR, WIDTH * 0.6, `drs-brake-${idx}`);
+
+  //     console.log(`[F1] DEBUG overlay Zone ${idx + 1}: active=${lapStart.toFixed(3)}→${lapEnd_phys?.toFixed(3)} brake=${lapEnd_phys?.toFixed(3)}→${lapEnd_full.toFixed(3)}`);
+  //   });
+  // }
+
+  // function drawSegment(svgEl, fromLap, toLap, color, width, id) {
+  //   const STEPS = 600;
+  //   if (fromLap == null || toLap == null) return;
+
+  //   /* Handle wrap: if toLap < fromLap, split into two segments */
+  //   if (toLap < fromLap) {
+  //     drawSegment(svgEl, fromLap, 1.0,    color, width, `${id}-a`);
+  //     drawSegment(svgEl, 0.0,    toLap,   color, width, `${id}-b`);
+  //     return;
+  //   }
+
+  //   const ns = 'http://www.w3.org/2000/svg';
+  //   const polyline = document.createElementNS(ns, 'polyline');
+  //   const points   = [];
+
+  //   for (let i = 0; i <= STEPS; i++) {
+  //     const frac  = fromLap + (toLap - fromLap) * (i / STEPS);
+  //     const rawP  = (LAP_ORIGIN + frac) % 1;
+  //     const pt    = trackPath.getPointAtLength(trackLen * rawP);
+  //     points.push(`${pt.x.toFixed(2)},${pt.y.toFixed(2)}`);
+  //   }
+
+  //   polyline.setAttribute('points',         points.join(' '));
+  //   polyline.setAttribute('fill',           'none');
+  //   polyline.setAttribute('stroke',         color);
+  //   polyline.setAttribute('stroke-width',   String(width));
+  //   polyline.setAttribute('stroke-linecap', 'round');
+  //   polyline.setAttribute('opacity',        '0.85');
+  //   polyline.setAttribute('id',             `debug-${id}`);
+
+  //   svgEl.appendChild(polyline);
+  // }
+
+  /* ── init ──────────────────────────────────────────────────────────────────
+    Strict execution order:
+    1.  fetch SVG + tracks.json in parallel
+    2.  apply TRACK_LEN_KM + PHYSICS setup from metadata
+    3.  insert SVG into live DOM
+    4.  set trackPath, trackLen, trackScale
+    5.  computeSectorBoundaries  → LAP_ORIGIN, S1_END, S2_END
+    6.  computeDRSZones          → DRS_ZONES (raw SVG progress)
+    7.  detectCorners            → raw κ positions
+    8.  convert to lapAt, sort, trim
+    9.  cornerSpeedFromKappa     → speed per corner (override or physics)
+    10. compute entryLapAt per corner
+    11. build HOLD_ZONES + ENTRY_LIST
+    12. buildPhysicsDRS          → DRS_ZONES_LAP (lap-relative, physics)
+    13. requestAnimationFrame    → simulation begins
+    ──────────────────────────────────────────────────────────────────────── */
   async function init() {
     try {
+      const F1_CALENDAR_2025 = [
+        { date: '03-16', track: 'albert-park'   },
+        { date: '03-23', track: 'hungaroring'   },
+        { date: '04-06', track: 'bahrain'       },
+        { date: '04-13', track: 'jeddah'        },
+        { date: '05-04', track: 'miami'         },
+        { date: '05-18', track: 'imola'         },
+        { date: '05-25', track: 'monaco'        },
+        { date: '06-01', track: 'barcelona'     },
+        { date: '06-15', track: 'montreal'      },
+        { date: '06-29', track: 'red-bull-ring' },
+        { date: '07-06', track: 'silverstone'   },
+        { date: '07-27', track: 'spa'           },
+        { date: '08-10', track: 'suzuka'        },
+        { date: '08-17', track: 'paul-ricard'   },
+        { date: '08-31', track: 'zandvoort'     },
+        { date: '09-07', track: 'monza'         },
+        { date: '09-21', track: 'baku'          },
+        { date: '10-05', track: 'singapore'     },
+        { date: '10-19', track: 'cota'          },
+        { date: '10-26', track: 'mexico'        },
+        { date: '11-09', track: 'interlagos'    },
+        { date: '11-22', track: 'las-vegas'     },
+        { date: '11-30', track: 'lusail'        },
+        { date: '12-07', track: 'yas-marina'    },
+      ];
+
+      async function resolveTrack() {
+        const now   = new Date();
+        const mmdd  = (now.getMonth() + 1) * 100 + now.getDate();
+
+        // Convert calendar to MM*100+DD for year-agnostic comparison
+        const withMmdd = F1_CALENDAR_2025.map(e => {
+          const d = new Date(e.date);
+          return { ...e, mmdd: (d.getMonth() + 1) * 100 + d.getDate() };
+        });
+
+        // Most recent past race by day-of-year, wrapping if needed
+        const past = withMmdd
+          .filter(e => e.mmdd <= mmdd)
+          .sort((a, b) => b.mmdd - a.mmdd);
+
+        // If nothing passed yet this year (e.g. Jan 1), wrap around to Dec 7
+        const ordered = past.length > 0
+          ? past
+          : [...withMmdd].sort((a, b) => b.mmdd - a.mmdd);
+
+        // Walk from most recent backwards until an SVG loads
+        for (const entry of ordered) {
+          const ok = await fetch(`assets/${entry.track}.svg`, { method: 'HEAD' })
+            .then(r => r.ok).catch(() => false);
+          if (ok) return entry.track;
+        }
+
+        // All SVGs missing: day-based cycle
+        const dayIdx = mmdd % F1_CALENDAR_2025.length;
+        return F1_CALENDAR_2025[dayIdx].track;
+      }
+
       const imgEl = document.getElementById('track-map');
       if (!imgEl) return;
+      
+      const trackKey = await resolveTrack();
+      imgEl.setAttribute('src', `assets/${trackKey}.svg`);
+      
+      const svgSrc  = imgEl.getAttribute('src');
+      const basePath = svgSrc.substring(0, svgSrc.lastIndexOf('/') + 1);
+      
 
-      const res    = await fetch('assets/track.svg');
-      const text   = await res.text();
-      const parser = new DOMParser();
-      const svgDoc = parser.parseFromString(text, 'image/svg+xml');
-      const svgEl  = svgDoc.documentElement;
+      const [svgText, allTracks] = await Promise.all([
+        fetch(svgSrc).then(r => r.text()),
+        fetch(`${basePath}tracks.json`).then(r => r.json()).catch(() => {
+          console.warn('[F1] tracks.json not found — using defaults');
+          return {};
+        }),
+      ]);
 
-      svgEl.id           = 'track-map';
+      const meta = allTracks[trackKey] ?? null;
+      if (!meta) console.warn(`[F1] No entry for "${trackKey}" in tracks.json`);
+
+      if (meta) {
+        TRACK_LEN_KM = meta.trackLenKm ?? TRACK_LEN_KM;
+        PHYSICS = {
+          a_lat:    meta.setup?.a_lat    ?? CAR.a_lat,
+          topSpeed: meta.setup?.topSpeed ?? CAR.topSpeed,
+          drsBoost: meta.setup?.drsBoost ?? CAR.drsBoost,
+          throttle: meta.setup?.throttle ?? CAR.throttle,
+          brake:    meta.setup?.brake    ?? CAR.brake,
+        };
+        if (meta.fallback?.drsZones) DRS_ZONES = meta.fallback.drsZones;
+        console.log(`[F1] Track: ${meta.name} (${TRACK_LEN_KM} km) | top=${PHYSICS.topSpeed} a_lat=${PHYSICS.a_lat}`);
+      } else {
+        console.warn(`[F1] No data for "${trackKey}" in tracks.json — lap times will be wrong`);
+      }
+
+      const fbS1      = meta?.fallback?.s1End  ?? 0.325;
+      const fbS2      = meta?.fallback?.s2End  ?? 0.635;
+      const cornerDefs = meta?.corners ?? [];
+
+      /* Insert SVG into live DOM */
+      const svgEl = new DOMParser().parseFromString(svgText, 'image/svg+xml').documentElement;
+      svgEl.id            = 'track-map';
       svgEl.style.cssText = imgEl.style.cssText || '';
       imgEl.replaceWith(svgEl);
 
-      trackPath = svgEl.querySelector('.st0');
-      if (!trackPath) { console.warn('[F1] .st0 not found in track SVG'); return; }
-      trackLen = trackPath.getTotalLength();
+      trackPath  = svgEl.querySelector('.st0');
+      if (!trackPath) { console.warn('[F1] .st0 not found'); return; }
+      trackLen   = trackPath.getTotalLength();
+      trackScale = (TRACK_LEN_KM * 1000) / trackLen;   // metres per SVG unit
+      console.log(`[F1] trackScale: ${trackScale.toFixed(4)} m/unit`);
 
-      computeNorm();
-
-      /* Calibrate physics rates to normalized velocity space.
-        VEL_RANGE spans peak→valley in normalized units.
-        Throttle: covers full range in 4000ms  (~1.5g analog)
-        Braking:  covers full range in 1200ms  (~5g analog, 3.33× throttle) */
-      const VEL_RANGE = (1.55 - 0.38) / normFactor;
-      THROTTLE_RATE   = VEL_RANGE / 4000;
-      BRAKE_RATE      = VEL_RANGE / 1200;
-      console.log(`[F1] Physics — THROTTLE: ${THROTTLE_RATE.toFixed(6)}/ms | BRAKE: ${BRAKE_RATE.toFixed(6)}/ms | ratio: ${(BRAKE_RATE/THROTTLE_RATE).toFixed(2)}x`);
-
-      computeSectorBoundaries(svgEl);
+      /* Steps 5–6 */
+      computeSectorBoundaries(svgEl, fbS1, fbS2);
       computeDRSZones(svgEl);
 
-      /* ── Wait for ALL page resources before starting the timer ──────────
-         Root cause of the "timer starts at ~8 s" bug on refresh:
-         - SVG loads fast (local, ~0.5 s) → startLap() called at t = 500 ms
-         - Google Fonts CDN takes 8 s → page first renders at t = 8 000 ms
-         - User sees timer at   elapsed = 8 000 − 500 = 7 500 ms  ≈ 8 s
-         Fix: don't start the rAF loop until window.load fires (all
-         resources done), so startLap(now) is called at true render time. */
+      /* Steps 7–8 */
+      const rawCorners = detectCorners(trackPath, trackLen);
+      console.log(`[F1] Detected ${rawCorners.length} corners`);
+
+      rawCorners.forEach(c => {
+        c.apexLapAt  = ((c.apexP  - LAP_ORIGIN) + 1) % 1;
+        c.entryLapAt = ((c.entryP - LAP_ORIGIN) + 1) % 1;
+      });
+      rawCorners.sort((a, b) => a.apexLapAt - b.apexLapAt);
+
+      /* Trim false detections to match cornerDefs count if provided */
+      if (cornerDefs.length > 0 && rawCorners.length > cornerDefs.length) {
+        rawCorners.splice(cornerDefs.length);
+        console.log(`[F1] Trimmed to ${cornerDefs.length} corners`);
+      }
+
+      /* Steps 9–10 */
+      rawCorners.forEach((c, i) => {
+        const override  = cornerDefs[i]?.racingLine ?? null;
+        c.speed         = cornerSpeedFromKappa(c.kappa, override);
+        c.fiaMin        = cornerDefs[i]?.fiaMin ?? c.speed;
+
+        const approachSpeed = PHYSICS.topSpeed + PHYSICS.drsBoost;
+        const brakeDist     = (approachSpeed ** 2 - c.speed ** 2)
+                              / (7200 * PHYSICS.brake * TRACK_LEN_KM);
+        c.entryLapAt    = ((c.apexLapAt - brakeDist) % 1 + 1) % 1;
+      });
+
+      // console.log('[F1] Corners:', rawCorners.map((c, i) =>
+      //   `T${i+1}@${c.apexLapAt.toFixed(3)} κ=${c.kappa.toFixed(4)} r=${((1/c.kappa)*trackScale).toFixed(0)}m spd=${c.speed}km/h`
+      // ).join(' | '));
+
+      /* Step 11 */
+      HOLD_ZONES = rawCorners
+        .filter(c => c.speed < PHYSICS.topSpeed)          // ← drop flat-out corners
+        .map(c => ({ start: c.entryLapAt, end: c.apexLapAt, speed: c.speed }));
+
+      ENTRY_LIST = rawCorners
+        .filter(c => c.speed < PHYSICS.topSpeed)          // ← same filter
+        .map(c => ({ lapAt: c.entryLapAt, speed: c.speed }));
+      
+      ENTRY_LIST.sort((a, b) => a.lapAt - b.lapAt);
+
+      /* Step 12 */
+      buildPhysicsDRS();
+
       await new Promise(resolve => {
         if (document.readyState === 'complete') resolve();
         else window.addEventListener('load', resolve, { once: true });
       });
-
+      // debugDRSOverlay(svgEl);
       requestAnimationFrame(frame);
-    } catch(e) {
+
+    } catch (e) {
       console.error('[F1] GPS init error:', e);
     }
   }
-
+  
   init();
 })();
 

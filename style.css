@@ -444,28 +444,76 @@ nav::after {
 .sector.s-active .sector-time { color: var(--text); }
 
 .fastest-lap-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  padding: 7px 10px;
   background: rgba(191,0,255,0.1);
   border: 1px solid rgba(191,0,255,0.3);
   border-radius: 2px;
 }
 
+.fl-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
 .fl-dot {
-  width: 10px; height: 10px;
+  width: 9px; height: 9px;
   border-radius: 50%;
   background: var(--purple);
   box-shadow: 0 0 8px var(--purple);
+  flex-shrink: 0;
 }
 
-.fl-text {
+.fl-label {
   font-family: var(--mono);
-  font-size: 0.62rem;
+  font-size: 0.55rem;
   letter-spacing: 1.5px;
   color: var(--purple);
   text-transform: uppercase;
+  flex: 1;
+}
+
+.fl-lap-time {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--purple);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+
+.fl-sectors {
+  display: flex;
+  gap: 5px;
+}
+
+.fl-sector {
+  flex: 1;
+  text-align: center;
+  padding: 4px 3px;
+  background: rgba(191,0,255,0.08);
+  border: 1px solid rgba(191,0,255,0.2);
+  border-radius: 2px;
+}
+
+.fl-sector-lbl {
+  font-family: var(--mono);
+  font-size: 0.5rem;
+  letter-spacing: 1px;
+  color: rgba(191,0,255,0.6);
+  display: block;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+}
+
+.fl-sector-time {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--purple);
+  display: block;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Stat pods */

@@ -10,7 +10,7 @@
 <body>
 
 <div id="parallax-circuit">
-  <img id="track-map" src="assets/track.svg" alt="Yas Marina Circuit" style="width:100%;height:100%;object-fit:contain;opacity:0.25;">
+  <img id="track-map" src="assets/yas-marina.svg" alt="Yas Marina Circuit" style="width:100%;height:100%;object-fit:contain;opacity:0.25;">
 </div>
 <div id="driver-indicator"></div>
 <canvas id="telemetry-canvas"></canvas>
@@ -109,9 +109,26 @@
           </div>
         </div>
 
-        <div class="fastest-lap-bar">
-          <div class="fl-dot"></div>
-          <span class="fl-text">Fastest Lap — Adesh Boudh</span>
+        <div class="fastest-lap-bar" id="fl-bar">
+          <div class="fl-header">
+            <div class="fl-dot"></div>
+            <span class="fl-label">FASTEST LAP</span>
+            <span class="fl-lap-time" id="fl-lap-time">--:--.---</span>
+          </div>
+          <div class="fl-sectors">
+            <div class="fl-sector">
+              <span class="fl-sector-lbl">S1</span>
+              <span class="fl-sector-time" id="fl-s1">--.-.-</span>
+            </div>
+            <div class="fl-sector">
+              <span class="fl-sector-lbl">S2</span>
+              <span class="fl-sector-time" id="fl-s2">--.-.-</span>
+            </div>
+            <div class="fl-sector">
+              <span class="fl-sector-lbl">S3</span>
+              <span class="fl-sector-time" id="fl-s3">--.-.-</span>
+            </div>
+          </div>
         </div>
 
         <div id="wdc-widget" style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.07);">
