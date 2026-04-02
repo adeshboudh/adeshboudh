@@ -24,14 +24,14 @@
     "name": "Circuit de Barcelona-Catalunya",
     "location": "Barcelona, Spain",
     "trackLenKm": 4.657,
-    "setup": { "a_lat": 26, "topSpeed": 315 },
+    "setup": { "a_lat": 36, "topSpeed": 315 },
     "_pole2024": "1:11.383"
   },
   "cota": {
     "name": "Circuit of the Americas",
     "location": "Austin, USA",
     "trackLenKm": 5.513,
-    "setup": { "a_lat": 26, "topSpeed": 318 },
+    "setup": { "a_lat": 46, "topSpeed": 318 },
     "_pole2024": "1:32.330"
   },
   "hungaroring": {
@@ -45,35 +45,35 @@
     "name": "Autodromo Enzo e Dino Ferrari",
     "location": "Imola, Italy",
     "trackLenKm": 4.909,
-    "setup": { "a_lat": 26, "topSpeed": 310 },
+    "setup": { "a_lat": 22, "topSpeed": 310 },
     "_pole2024": "1:14.746"
   },
   "interlagos": {
     "name": "Autodromo Jose Carlos Pace",
     "location": "São Paulo, Brazil",
     "trackLenKm": 4.309,
-    "setup": { "a_lat": 26, "topSpeed": 315 },
+    "setup": { "a_lat": 36, "topSpeed": 315 },
     "_pole2024": "1:09.733"
   },
   "jeddah": {
     "name": "Jeddah Corniche Circuit",
     "location": "Jeddah, Saudi Arabia",
     "trackLenKm": 6.174,
-    "setup": { "a_lat": 26, "topSpeed": 330 },
+    "setup": { "a_lat": 21, "topSpeed": 330 },
     "_pole2024": "1:27.472"
   },
   "lusail": {
     "name": "Lusail International Circuit",
     "location": "Lusail, Qatar",
     "trackLenKm": 5.380,
-    "setup": { "a_lat": 26, "topSpeed": 320 },
+    "setup": { "a_lat": 36, "topSpeed": 320 },
     "_pole2024": "1:23.778"
   },
   "mexico": {
     "name": "Autodromo Hermanos Rodriguez",
     "location": "Mexico City, Mexico",
     "trackLenKm": 4.304,
-    "setup": { "a_lat": 22, "topSpeed": 350 },
+    "setup": { "a_lat": 32, "topSpeed": 350 },
     "_pole2024": "1:15.591"
   },
   "miami": {
