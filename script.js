@@ -8,6 +8,8 @@
 (function () {
 
   const indicator = document.getElementById('driver-indicator');
+  const mapLayer  = document.getElementById('parallax-circuit');
+  const loaderEl  = document.getElementById('track-loader');
   const lapEl     = document.getElementById('lap-timer');
   const s1El      = document.getElementById('s1');
   const s2El      = document.getElementById('s2');
@@ -20,7 +22,7 @@
   const flS1El    = document.getElementById('fl-s1');
   const flS2El    = document.getElementById('fl-s2');
   const flS3El    = document.getElementById('fl-s3');
-  if (!indicator || !lapEl) return;
+  if (!indicator || !lapEl || !mapLayer) return;
 
   lapEl.textContent = '0:00.000';
   if (s1t) s1t.textContent = '0.000';
@@ -134,12 +136,43 @@
     return new DOMPoint(pt.x, pt.y).matrixTransform(cachedCTM);
   }
 
+  function setMapState(state) {
+    mapLayer.dataset.mapState = state;
+    mapLayer.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
+
+    if (state === 'ready') {
+      document.body.classList.add('map-ready');
+      if (loaderEl) loaderEl.hidden = true;
+      return;
+    }
+
+    document.body.classList.remove('map-ready');
+  }
+
+  function waitForMapViewport(target) {
+    return new Promise(resolve => {
+      if (!target || !('IntersectionObserver' in window)) {
+        resolve();
+        return;
+      }
+
+      const observer = new IntersectionObserver(entries => {
+        if (entries.some(entry => entry.isIntersecting)) {
+          observer.disconnect();
+          resolve();
+        }
+      }, { rootMargin: '240px 0px' });
+
+      observer.observe(target);
+    });
+  }
+
   /* ── Tab visibility: freeze timers while hidden ── */
   document.addEventListener('visibilitychange', () => {
     if (document.hidden || lastFrame === null) return;
     const gap = performance.now() - lastFrame;
-    lapStart    += gap;
-    sectorStart += gap;
+    if (lapStart !== null) lapStart += gap;
+    if (sectorStart !== null) sectorStart += gap;
     lastFrame    = performance.now();
   });
 
@@ -183,7 +216,6 @@
 
   /* ── Reset for new lap ── */
   function startLap(now) {
-    sectorStart = now;
     lastFrame   = now;
     curSector   = 0;
     lapProgress = 0;
@@ -195,8 +227,10 @@
       lightsOutDelay   = 1000;
       isFirstLap       = false;
       lapStart         = null;    // ← defer: set on first real tick, not here
+      sectorStart      = null;    // ← keep sector timing aligned with lap timing
     } else {
-      lapStart = now;
+      lapStart    = now;
+      sectorStart = now;
     }
 
     if (s1El) s1El.className    = 'sector s-active';
@@ -286,6 +320,7 @@
     if (lightsOutDelay > 0) {
       lightsOutDelay -= dt;
       if (lapStart === null) lapStart = now;   // ← anchor only when freeze starts ticking
+      if (sectorStart === null) sectorStart = now;
       lapStart    += dt;
       sectorStart += dt;
       return;
@@ -293,6 +328,7 @@
     
     /* First tick after freeze expires */
     if (lapStart === null) lapStart = now;
+    if (sectorStart === null) sectorStart = now;
     
     const targetSpeed = getTargetSpeed(lapProgress);
     if (currentSpeed_kmh < targetSpeed) {
@@ -675,19 +711,19 @@
         return F1_CALENDAR_2025[dayIdx].track;
       }
 
-      const imgEl = document.getElementById('track-map');
-      if (!imgEl) return;
-      
+      setMapState('loading');
+      await waitForMapViewport(document.getElementById('hero') || mapLayer);
+
       const trackKey = await resolveTrack();
-      imgEl.setAttribute('src', `assets/${trackKey}.svg`);
-      
-      const svgSrc  = imgEl.getAttribute('src');
-      const basePath = svgSrc.substring(0, svgSrc.lastIndexOf('/') + 1);
-      
+      const svgSrc  = `assets/${trackKey}.svg`;
+      mapLayer.dataset.trackKey = trackKey;
 
       const [svgText, allTracks] = await Promise.all([
-        fetch(svgSrc).then(r => r.text()),
-        fetch(`${basePath}tracks.json`).then(r => r.json()).catch(() => {
+        fetch(svgSrc).then(r => {
+          if (!r.ok) throw new Error(`Track SVG failed to load: ${svgSrc}`);
+          return r.text();
+        }),
+        fetch('assets/tracks.json').then(r => r.json()).catch(() => {
           console.warn('[F1] tracks.json not found — using defaults');
           return {};
         }),
@@ -718,8 +754,11 @@
       /* Insert SVG into live DOM */
       const svgEl = new DOMParser().parseFromString(svgText, 'image/svg+xml').documentElement;
       svgEl.id            = 'track-map';
-      svgEl.style.cssText = imgEl.style.cssText || '';
-      imgEl.replaceWith(svgEl);
+      svgEl.setAttribute('aria-hidden', 'true');
+      const existingMap = mapLayer.querySelector('#track-map');
+      if (existingMap) existingMap.remove();
+      mapLayer.appendChild(svgEl);
+      setMapState('ready');
 
       trackPath  = svgEl.querySelector('.st0');
       if (!trackPath) { console.warn('[F1] .st0 not found'); return; }
@@ -785,6 +824,7 @@
       requestAnimationFrame(frame);
 
     } catch (e) {
+      setMapState('error');
       console.error('[F1] GPS init error:', e);
     }
   }
