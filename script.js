@@ -398,10 +398,22 @@
   }
 
   /* ── closestProgress ── */
-  function closestProgress(targetPt, steps = 2000) {
+  function closestProgress(targetPt, coarse = 200) {
+    /* Coarse pass */
     let bestD = Infinity, bestP = 0;
-    for (let i = 0; i <= steps; i++) {
-      const p  = i / steps;
+    for (let i = 0; i <= coarse; i++) {
+      const p  = i / coarse;
+      const pt = trackPath.getPointAtLength(trackLen * p);
+      const d  = (pt.x - targetPt.x) ** 2 + (pt.y - targetPt.y) ** 2;
+      if (d < bestD) { bestD = d; bestP = p; }
+    }
+    /* Fine pass: search ±1 coarse step around best */
+    const step = 1 / coarse;
+    const lo   = Math.max(0, bestP - step);
+    const hi   = Math.min(1, bestP + step);
+    const fine = 100;
+    for (let i = 0; i <= fine; i++) {
+      const p  = lo + (hi - lo) * i / fine;
       const pt = trackPath.getPointAtLength(trackLen * p);
       const d  = (pt.x - targetPt.x) ** 2 + (pt.y - targetPt.y) ** 2;
       if (d < bestD) { bestD = d; bestP = p; }
@@ -529,7 +541,7 @@
 
   /* ── detectCorners ── */
   function detectCorners(path, len) {
-    const N   = 3000;
+    const N   = 600;
     const pts = [];
     for (let i = 0; i <= N; i++) {
       const pt = path.getPointAtLength(len * i / N);
@@ -548,7 +560,7 @@
     }
 
     const THRESHOLD = 0.003;
-    const MIN_GAP   = 80;
+    const MIN_GAP   = 16;
     const corners   = [];
     let   lastExit  = -MIN_GAP;
 
@@ -680,13 +692,13 @@
       ];
 
       async function resolveTrack() {
-        const now   = new Date();
-        const mmdd  = (now.getMonth() + 1) * 100 + now.getDate();
+        const now  = new Date();
+        const mmdd = (now.getMonth() + 1) * 100 + now.getDate();
 
-        // Convert calendar to MM*100+DD for year-agnostic comparison
+        // Parse MM-DD strings directly — avoids Invalid Date from new Date('03-16')
         const withMmdd = F1_CALENDAR_2025.map(e => {
-          const d = new Date(e.date);
-          return { ...e, mmdd: (d.getMonth() + 1) * 100 + d.getDate() };
+          const [mm, dd] = e.date.split('-').map(Number);
+          return { ...e, mmdd: mm * 100 + dd };
         });
 
         // Most recent past race by day-of-year, wrapping if needed
@@ -694,17 +706,20 @@
           .filter(e => e.mmdd <= mmdd)
           .sort((a, b) => b.mmdd - a.mmdd);
 
-        // If nothing passed yet this year (e.g. Jan 1), wrap around to Dec 7
         const ordered = past.length > 0
           ? past
           : [...withMmdd].sort((a, b) => b.mmdd - a.mmdd);
 
-        // Walk from most recent backwards until an SVG loads
-        for (const entry of ordered) {
-          const ok = await fetch(`assets/${entry.track}.svg`, { method: 'HEAD' })
-            .then(r => r.ok).catch(() => false);
-          if (ok) return entry.track;
-        }
+        // Check all candidates in parallel, pick the most-recent available
+        const checks = await Promise.all(
+          ordered.map(entry =>
+            fetch(`assets/${entry.track}.svg`, { method: 'HEAD' })
+              .then(r => r.ok ? entry : null)
+              .catch(() => null)
+          )
+        );
+        const found = checks.find(e => e !== null);
+        if (found) return found.track;
 
         // All SVGs missing: day-based cycle
         const dayIdx = mmdd % F1_CALENDAR_2025.length;

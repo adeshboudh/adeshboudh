@@ -581,9 +581,9 @@
 
     const kick = () => {
       if ('requestIdleCallback' in window) {
-        requestIdleCallback(loadAppScript, { timeout: 1200 });
+        requestIdleCallback(loadAppScript, { timeout: 200 });
       } else {
-        setTimeout(loadAppScript, 250);
+        setTimeout(loadAppScript, 50);
       }
     };
 
