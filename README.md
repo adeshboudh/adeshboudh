@@ -8,7 +8,7 @@ Not a researcher. Not a data scientist. An engineer who builds things that work 
 
 ## Featured Projects
 
-### [CivicSetu](https://adesh01-civicsetu.hf.space) — Open-Source Civic RAG System
+### [CivicSetu](https://civicsetu-two.vercel.app/) — Open-Source Civic RAG System
 Ask a plain-English question about Indian RERA law. Get a cited, structured answer with section references, confidence score, and cross-jurisdiction reasoning — grounded in real legal text across 5 jurisdictions.
 
 - **Three-store retrieval:** pgvector (semantic search) + Neo4j (cross-reference graph traversal) + PostgreSQL (chunk metadata), queried in parallel via a LangGraph agent
