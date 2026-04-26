@@ -1,0 +1,630 @@
+﻿
+:root {
+  --accent: #ce514b;
+  --accent-light: #f06861;
+  --gold: #c9952a;
+  --bg: #ede4ce;
+  --bg2: #f5eeda;
+  --ink: #1a1008;
+  --ink2: #2a1f10;
+  --muted: #7a6a55;
+  --panel-border: 4px solid var(--ink);
+  --anim-speed: 0.6s;
+  --panel-shadow: 6px 6px 0 var(--ink);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Noto Sans JP', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  overflow-x: hidden;
+}
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.04'/%3E%3C/SVG%3E");
+  opacity: 0.6;
+}
+
+/* â”€â”€ NAV â”€â”€ */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 40px;
+  background: var(--ink);
+  border-bottom: 3px solid var(--accent);
+  transition: padding 0.3s;
+}
+nav.scrolled { padding: 8px 40px; }
+.nav-logo {
+  font-family: 'Bangers', cursive;
+  font-size: 26px; letter-spacing: 2px;
+  color: var(--bg);
+}
+.nav-logo span { color: var(--accent-light); }
+.nav-links { display: flex; gap: 28px; align-items: center; }
+.nav-links a {
+  font-family: 'Caveat', cursive;
+  font-size: 16px; color: #ccc;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.nav-links a:hover { color: var(--accent-light); }
+.nav-hire {
+  font-family: 'Bangers', cursive; letter-spacing: 1px;
+  background: var(--accent); color: white;
+  padding: 6px 18px; font-size: 16px;
+  border: 2px solid var(--accent-light);
+  cursor: pointer; text-decoration: none;
+  transition: background 0.2s, transform 0.1s;
+}
+.nav-hire:hover { background: var(--accent-light); transform: translateY(-1px); }
+.nav-theme-switch {
+  font-family: 'Bangers', cursive; letter-spacing: 1px;
+  background: transparent; color: #aaa;
+  padding: 5px 14px; font-size: 16px;
+  border: 2px solid #555;
+  cursor: pointer; text-decoration: none;
+  transition: color 0.2s, border-color 0.2s;
+}
+.nav-theme-switch:hover { color: #fff; border-color: #aaa; }
+
+/* â”€â”€ CHAPTER LABEL â”€â”€ */
+.chapter-tag {
+  font-family: 'Bangers', cursive;
+  font-size: 16px; letter-spacing: 3px;
+  color: var(--accent);
+  margin-bottom: 6px;
+  display: block;
+}
+
+/* â”€â”€ HERO â”€â”€ */
+#hero {
+  height: 100vh;
+  min-height: 100vh;
+  position: relative;
+  border-bottom: var(--panel-border);
+  padding-top: 64px;
+  overflow: hidden;
+  background-image: url("assets/anime/background.jpg");
+  background-size: cover;
+  background-position:center;
+  background-repeat: no-repeat;
+}
+
+.hero-left {
+  position: relative; z-index: 5;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 40px 50px 40px 60px;
+  height: calc(80vh - 64px);
+  max-width: 560px;
+}
+.hero-chapter {
+  font-family: 'Bangers', cursive;
+  font-size: 16px; letter-spacing: 5px;
+  color: var(--gold);
+  margin-bottom: 14px;
+  opacity: 0; transform: translateY(-20px);
+  animation: slide-down var(--anim-speed) 0.2s forwards;
+}
+.hero-title {
+  font-family: 'Bangers', cursive;
+  font-size: clamp(48px, 6vw, 80px);
+  line-height: 0.95;
+  letter-spacing: 2px;
+  color: var(--ink);
+  margin-bottom: 8px;
+  opacity: 0; transform: translateX(-60px);
+  animation: slam-in var(--anim-speed) 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+.hero-title .accent { color: var(--accent); }
+.hero-subtitle {
+  font-family: 'Bangers', cursive;
+  font-size: 20px; letter-spacing: 2px;
+  color: var(--accent); margin-bottom: 14px;
+  border-left: 5px solid var(--gold);
+  padding-left: 14px;
+  opacity: 0; animation: fade-in 0.5s 0.8s forwards;
+}
+.hero-desc {
+  font-size: 16px; color: var(--muted);
+  line-height: 1.6; max-width: 460px;
+  margin-bottom: 24px;
+  opacity: 0; animation: fade-in 0.5s 1s forwards;
+}
+.hero-btns {
+  display: flex; gap: 12px;
+  opacity: 0; animation: fade-in 0.5s 1.2s forwards;
+  margin-bottom: 4px;
+}
+.btn-primary {
+  font-family: 'Bangers', cursive; font-size: 18px; letter-spacing: 2px;
+  background: var(--ink); color: var(--bg);
+  padding: 10px 28px; border: 3px solid var(--ink);
+  cursor: pointer; text-decoration: none;
+  box-shadow: 4px 4px 0 var(--accent);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.btn-primary:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 var(--accent); }
+.btn-secondary {
+  font-family: 'Bangers', cursive; font-size: 18px; letter-spacing: 2px;
+  background: transparent; color: var(--ink);
+  padding: 10px 28px; border: 3px solid var(--ink);
+  cursor: pointer; text-decoration: none;
+  box-shadow: 4px 4px 0 var(--ink2);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.btn-secondary:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 var(--accent); }
+
+/* Stat chips */
+.hero-stats {
+  display: flex; gap: 12px; margin-top: 24px;
+  opacity: 0; animation: fade-in 0.5s 1.4s forwards;
+  flex-wrap: wrap;
+}
+.stat-chip {
+  border: 3px solid var(--ink); background: var(--bg2);
+  padding: 6px 12px; text-align: center;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+.stat-chip .val {
+  font-family: 'Bangers', cursive; font-size: 28px;
+  color: var(--accent); line-height: 1; display: block;
+}
+.stat-chip .lbl {
+  font-family: 'Caveat', cursive; font-size: 16px;
+  color: var(--muted); display: block;
+}
+
+/* Layer system */
+.hero-layer { 
+  position: absolute; 
+  pointer-events: none; 
+  will-change: transform; 
+}
+
+/* Red sun — behind Zoro's head, upper right */
+.hero-sun-img {
+  right: 10%; top: 8%;
+  height: 25vh; width: auto;
+  z-index: 1;
+  filter: brightness(0) saturate(100%) invert(38%) sepia(60%) saturate(600%) hue-rotate(315deg) brightness(85%);
+}
+/* Zoro character â€” multiply drops white */
+.hero-zoro-img {
+  right: 2%; bottom: 0;
+  height: 105vh; width: auto;
+  z-index: 2;
+  mix-blend-mode: multiply;
+}
+/* RORONOA ZORO text block */
+.hero-text-img {
+  right: 8%; top: 65%;
+  transform: translateY(-50%);
+  height: 52vh; width: auto;
+  z-index: 3;
+  mix-blend-mode: multiply;
+  filter: brightness(0) saturate(100%) invert(38%) sepia(60%) saturate(600%) hue-rotate(310deg) brightness(85%);
+}
+/* Left gradient so text stays readable */
+#hero::after {
+  content: '';
+  position: absolute; top: 0; left: 0;
+  width: 42%; height: 100%;
+  z-index: 4; pointer-events: none;
+}
+
+/* Scroll indicator */
+.scroll-hint {
+  position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+  font-family: 'Caveat', cursive; font-size: 16px; color: var(--muted);
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  animation: bob 2s ease-in-out infinite;
+  z-index: 3;
+}
+@keyframes bob { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(6px)} }
+
+/* â”€â”€ MANGA PANEL LAYOUT â”€â”€ */
+.manga-section {
+  border-bottom: var(--panel-border);
+}
+.chapter-header {
+  display: flex; align-items: center; gap: 20px;
+  padding: 24px 60px;
+  border-bottom: var(--panel-border);
+  background: var(--ink);
+  color: var(--bg);
+}
+.chapter-num {
+  font-family: 'Bangers', cursive;
+  font-size: 64px; line-height: 1;
+  color: var(--accent); opacity: 0.25;
+  min-width: 100px;
+}
+.chapter-title {
+  font-family: 'Bangers', cursive;
+  font-size: 36px; letter-spacing: 3px;
+  color: var(--bg);
+}
+.chapter-sub {
+  font-family: 'Caveat', cursive;
+  font-size: 16px; color: #aaa; margin-top: 2px;
+}
+
+/* â”€â”€ ABOUT â”€â”€ */
+#about .panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+}
+.about-panel {
+  padding: 40px;
+  border-right: var(--panel-border);
+}
+.about-panel:last-child { border-right: none; }
+.about-panel h3 {
+  font-family: 'Bangers', cursive; font-size: 22px;
+  letter-spacing: 1px; margin-bottom: 12px;
+  color: var(--accent);
+}
+.about-panel p {
+  font-size: 16px; line-height: 1.75; color: var(--ink2);
+}
+.big-quote {
+  background: var(--ink);
+  padding: 40px 60px;
+  border-bottom: var(--panel-border);
+  display: flex; align-items: center; gap: 20px;
+}
+.big-quote blockquote {
+  font-family: 'Bangers', cursive;
+  font-size: clamp(22px, 3vw, 32px); letter-spacing: 1px;
+  color: var(--bg); line-height: 1.4;
+}
+.big-quote .quotemark {
+  font-family: 'Bangers', cursive; font-size: 120px;
+  color: var(--accent); opacity: 0.3; line-height: 0.7;
+  flex-shrink: 0; align-self: flex-start;
+}
+
+/* â”€â”€ SKILLS / DEVIL FRUITS â”€â”€ */
+#skills .fruits-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-top: var(--panel-border);
+}
+.fruit-card {
+  padding: 32px 24px;
+  border-right: var(--panel-border);
+  border-bottom: var(--panel-border);
+  transition: background 0.2s;
+  cursor: default;
+}
+.fruit-card:nth-child(4n) { border-right: none; }
+.fruit-card:hover { background: var(--bg2); }
+.fruit-icon {
+  width: 52px; height: 52px;
+  border: 3px solid var(--ink);
+  background: var(--bg2);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 14px;
+  box-shadow: 3px 3px 0 var(--ink);
+  font-size: 22px;
+}
+.fruit-name {
+  font-family: 'Bangers', cursive; font-size: 18px;
+  letter-spacing: 1px; color: var(--accent);
+  margin-bottom: 4px;
+}
+.fruit-label {
+  font-family: 'Caveat', cursive; font-size: 16px;
+  color: var(--gold); font-weight: 700;
+  margin-bottom: 8px;
+}
+.fruit-skills {
+  display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;
+}
+.skill-tag {
+  font-family: 'Caveat', cursive; font-size: 16px;
+  border: 2px solid var(--ink); padding: 2px 8px;
+  background: var(--bg);
+}
+
+/* â”€â”€ EXPERIENCE â”€â”€ */
+#experience .timeline {
+  padding: 40px 60px;
+  display: flex; flex-direction: column; gap: 0;
+}
+.voyage-entry {
+  display: grid;
+  grid-template-columns: 130px 40px 1fr;
+  gap: 0 20px;
+  padding: 32px 0;
+  border-bottom: 2px dashed #ccc;
+  align-items: start;
+}
+.voyage-entry:last-child { border-bottom: none; }
+.voyage-date {
+  font-family: 'Bangers', cursive; font-size: 16px;
+  color: var(--gold); text-align: right;
+  padding-top: 4px;
+}
+.voyage-dot-col {
+  display: flex; flex-direction: column; align-items: center;
+}
+.voyage-dot {
+  width: 16px; height: 16px;
+  background: var(--accent); border: 3px solid var(--ink);
+  border-radius: 50%; flex-shrink: 0; margin-top: 4px;
+}
+.voyage-line { flex: 1; width: 2px; background: #ccc; margin-top: 4px; min-height: 40px; }
+.voyage-title {
+  font-family: 'Bangers', cursive; font-size: 22px; letter-spacing: 1px;
+  margin-bottom: 2px;
+}
+.voyage-company {
+  font-family: 'Caveat', cursive; font-size: 16px;
+  color: var(--accent); margin-bottom: 10px; font-weight: 700;
+}
+.voyage-bullets { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.voyage-bullets li {
+  font-size: 16px; color: var(--ink2); line-height: 1.6;
+  padding-left: 16px; position: relative;
+}
+.voyage-bullets li::before {
+  content: '▶';
+  position: absolute; left: 0;
+  color: var(--accent); font-size: 9px; top: 4px;
+}
+.voyage-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
+.voyage-tag {
+  font-family: 'Caveat', cursive; font-size: 13px;
+  background: var(--ink); color: var(--bg);
+  padding: 4px 10px;
+}
+
+/* â”€â”€ PROJECTS â”€â”€ */
+#projects .islands {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-top: var(--panel-border);
+}
+.island-card {
+  border-right: var(--panel-border);
+  border-bottom: var(--panel-border);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.island-card:nth-child(3n) { border-right: none; }
+.island-banner {
+  background: var(--ink); color: var(--bg);
+  padding: 20px 24px;
+  border-bottom: var(--panel-border);
+}
+.island-num {
+  font-family: 'Bangers', cursive; font-size: 48px; line-height: 1;
+  color: var(--accent); opacity: 0.3;
+}
+.island-type {
+  font-family: 'Bangers', cursive; font-size: 11px; letter-spacing: 3px;
+  color: var(--gold); margin-bottom: 4px;
+}
+.island-name {
+  font-family: 'Bangers', cursive; font-size: 28px; letter-spacing: 1px;
+  color: var(--bg);
+}
+.island-body { padding: 24px; flex: 1; }
+.island-desc { font-size: 16px; color: var(--ink2); line-height: 1.7; margin-bottom: 16px; }
+.island-metrics {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.metric {
+  font-family: 'Caveat', cursive; font-size: 16px; font-weight: 700;
+  border: 2px solid var(--ink); padding: 3px 8px;
+  background: var(--bg2); color: var(--ink2);
+}
+.island-footer {
+  padding: 16px 24px;
+  border-top: var(--panel-border);
+  display: flex; justify-content: space-between; align-items: flex-end; gap: 12px;
+}
+.island-stack { display: flex; flex-wrap: wrap; gap: 4px; }
+.stack-tag {
+  font-family: 'Caveat', cursive; font-size: 11px;
+  background: var(--bg); border: 2px solid var(--ink);
+  padding: 2px 6px; color: var(--ink2);
+}
+.island-link {
+  font-family: 'Bangers', cursive; font-size: 16px; letter-spacing: 1px;
+  color: var(--accent); text-decoration: none; white-space: nowrap;
+  border-bottom: 2px solid var(--accent);
+  transition: color 0.2s;
+}
+.island-link:hover { color: var(--accent-light); }
+
+/* â”€â”€ CONTACT â”€â”€ */
+#contact {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 80px 60px;
+  gap: 60px;
+  border-bottom: var(--panel-border);
+}
+.contact-title {
+  font-family: 'Bangers', cursive;
+  font-size: clamp(48px, 6vw, 72px); line-height: 1;
+  letter-spacing: 2px; margin-bottom: 16px;
+}
+.contact-title .gold { color: var(--gold); }
+.contact-sub {
+  font-family: 'Caveat', cursive; font-size: 16px;
+  color: var(--muted); line-height: 1.6;
+}
+.contact-links { display: flex; flex-direction: column; gap: 16px; justify-content: center; }
+.contact-link {
+  display: flex; align-items: center; gap: 16px;
+  text-decoration: none; color: var(--ink);
+  border: var(--panel-border); padding: 16px 20px;
+  background: var(--bg2);
+  box-shadow: 4px 4px 0 var(--ink);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.contact-link:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 var(--accent); }
+.cl-icon { font-size: 24px; flex-shrink: 0; }
+.cl-label {
+  font-family: 'Bangers', cursive; font-size: 16px; letter-spacing: 2px;
+  color: var(--muted); display: block;
+}
+.cl-val {
+  font-family: 'Caveat', cursive; font-size: 18px; font-weight: 700;
+  color: var(--accent); display: block;
+}
+
+/* â”€â”€ FOOTER â”€â”€ */
+footer {
+  background: var(--ink); color: #aaa;
+  padding: 24px 60px;
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: 'Caveat', cursive; font-size: 16px;
+}
+footer .accent { color: var(--accent-light); }
+
+/* â”€â”€ ANIMATIONS â”€â”€ */
+@keyframes slide-down {
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slam-in {
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes fade-in {
+  to { opacity: 1; }
+}
+@keyframes panel-left {
+  from { opacity: 0; transform: translateX(-40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes panel-right {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes panel-up {
+  from { opacity: 0; transform: translateY(30px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.reveal { opacity: 0; }
+.reveal.from-left  { animation: panel-left  var(--anim-speed) cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
+.reveal.from-right { animation: panel-right var(--anim-speed) cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
+.reveal.from-below { animation: panel-up    var(--anim-speed) cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
+
+/* ── RESPONSIVE: TABLET ── */
+@media (max-width: 900px) {
+  /* Nav */
+  nav { padding: 12px 20px; }
+  .nav-links { display: none; }
+
+  /* Hero */
+  #hero { background-position: right center; }
+  .hero-left { padding: 32px 24px; max-width: 100%; height: calc(100vh - 64px); }
+  .hero-zoro-img { height: 75vh; opacity: 0.25; }
+  .hero-sun-img { height: 18vh; top: 10%; right: 5%; opacity: 0.4; }
+  .hero-text-img { display: none; }
+  #hero::after {
+    width: 100%;
+    background: linear-gradient(to right,
+      rgba(237,228,206,0.97) 0%,
+      rgba(237,228,206,0.85) 60%,
+      rgba(237,228,206,0.5) 100%);
+  }
+
+  /* About */
+  .chapter-header { padding: 20px 24px; }
+  .chapter-num { font-size: 48px; min-width: 70px; }
+  .chapter-title { font-size: 28px; }
+  .big-quote { padding: 28px 24px; }
+  .big-quote .quotemark { font-size: 80px; }
+  #about .panels { grid-template-columns: 1fr; }
+  .about-panel { border-right: none; border-bottom: var(--panel-border); padding: 28px 24px; }
+  .about-panel:last-child { border-bottom: none; }
+
+  /* Skills */
+  #skills .fruits-grid { grid-template-columns: repeat(2, 1fr); }
+  .fruit-card:nth-child(4n) { border-right: var(--panel-border); }
+  .fruit-card:nth-child(2n) { border-right: none; }
+
+  /* Experience */
+  #experience .timeline { padding: 24px; }
+  .voyage-entry { grid-template-columns: 70px 28px 1fr; gap: 0 12px; }
+
+  /* Projects */
+  #projects .islands { grid-template-columns: 1fr; }
+  .island-card:nth-child(3n) { border-right: none; }
+  .island-card { border-right: none; }
+
+  /* Contact */
+  #contact { grid-template-columns: 1fr; padding: 40px 24px; gap: 32px; }
+
+  /* Footer */
+  footer { flex-direction: column; gap: 8px; padding: 20px 24px; text-align: center; }
+}
+
+/* ── RESPONSIVE: PHONE ── */
+@media (max-width: 480px) {
+  /* Nav */
+  nav { padding: 10px 16px; }
+  .nav-logo { font-size: 20px; }
+  .nav-theme-switch { font-size: 11px; padding: 4px 8px; }
+  .nav-hire { font-size: 13px; padding: 5px 12px; }
+
+  /* Hero */
+  .hero-left { padding: 24px 16px; justify-content: flex-end; padding-bottom: 48px; }
+  .hero-chapter { font-size: 11px; letter-spacing: 3px; margin-bottom: 8px; }
+  .hero-title { font-size: clamp(40px, 12vw, 56px); }
+  .hero-subtitle { font-size: 16px; }
+  .hero-desc { font-size: 13px; }
+  .btn-primary, .btn-secondary { font-size: 15px; padding: 8px 18px; }
+  .hero-stats { gap: 8px; }
+  .stat-chip { padding: 5px 10px; }
+  .stat-chip .val { font-size: 22px; }
+  .hero-zoro-img { height: 55vh; opacity: 0.18; }
+  .hero-sun-img { display: none; }
+
+  /* Sections */
+  .chapter-header { padding: 16px; gap: 12px; }
+  .chapter-num { font-size: 36px; min-width: 50px; }
+  .chapter-title { font-size: 22px; }
+  .chapter-sub { font-size: 13px; }
+
+  /* About */
+  .big-quote { padding: 20px 16px; flex-direction: column; gap: 8px; }
+  .big-quote .quotemark { font-size: 60px; line-height: 1; }
+  .big-quote blockquote { font-size: 18px; }
+  .about-panel { padding: 20px 16px; }
+
+  /* Skills */
+  #skills .fruits-grid { grid-template-columns: 1fr; }
+  .fruit-card:nth-child(4n) { border-right: none; }
+  .fruit-card:nth-child(2n) { border-right: none; }
+  .fruit-card { padding: 20px 16px; }
+
+  /* Experience */
+  #experience .timeline { padding: 16px; }
+  .voyage-entry { grid-template-columns: 60px 24px 1fr; gap: 0 8px; padding: 20px 0; }
+  .voyage-date { font-size: 13px; }
+  .voyage-title { font-size: 18px; }
+  .voyage-bullets li { font-size: 13px; }
+
+  /* Projects */
+  .island-banner { padding: 16px; }
+  .island-body { padding: 16px; }
+  .island-footer { padding: 12px 16px; flex-direction: column; align-items: flex-start; gap: 10px; }
+
+  /* Contact */
+  #contact { padding: 28px 16px; }
+  .contact-title { font-size: 36px; }
+  .contact-link { padding: 12px 14px; }
+
+  /* Footer */
+  footer { padding: 16px; }
+}
+
