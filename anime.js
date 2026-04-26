@@ -22,6 +22,13 @@ const revealObs = new IntersectionObserver((entries) => {
 }, { threshold: 0.12 });
 reveals.forEach(el => revealObs.observe(el));
 
+// One Piece torch reveal — CSS mask follows mouse via custom properties
+const opOverlay = document.getElementById('op-overlay');
+document.addEventListener('mousemove', (e) => {
+  opOverlay.style.setProperty('--mx', e.pageX + 'px');
+  opOverlay.style.setProperty('--my', e.pageY + 'px');
+});
+
 // Stagger children of grid sections
 document.querySelectorAll('.fruits-grid .fruit-card, .islands .island-card').forEach((el, i) => {
   el.dataset.delay = (i % 4) * 0.08;
